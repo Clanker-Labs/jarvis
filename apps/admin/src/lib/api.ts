@@ -80,12 +80,17 @@ export function onAuthProblem(fn: Listener): () => void {
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
-  /** JSON-serialised unless it's a string (sent raw, e.g. YAML import). */
+  /** JSON-serialised unless it's a string/Blob/ArrayBuffer (sent raw, e.g. YAML import, file uploads). */
   body?: unknown;
   contentType?: string;
   signal?: AbortSignal;
   /** Let the request outlive the page (used to turn the mic monitor off on tab close). */
   keepalive?: boolean;
+}
+
+/** Strings, Blobs/Files and ArrayBuffers are sent as-is; anything else is JSON. */
+function isRaw(b: unknown): b is string | Blob | ArrayBuffer {
+  return typeof b === "string" || (typeof Blob !== "undefined" && b instanceof Blob) || b instanceof ArrayBuffer;
 }
 
 export function buildInit(opts: RequestOptions): RequestInit {
@@ -94,9 +99,9 @@ export function buildInit(opts: RequestOptions): RequestInit {
   if (method !== "GET") headers["X-Jarvis-Admin"] = "1";
   let body: BodyInit | undefined;
   if (opts.body !== undefined) {
-    if (typeof opts.body === "string") {
+    if (isRaw(opts.body)) {
       body = opts.body;
-      headers["Content-Type"] = opts.contentType ?? "text/plain";
+      headers["Content-Type"] = opts.contentType ?? (typeof opts.body === "string" ? "text/plain" : "application/octet-stream");
     } else {
       body = JSON.stringify(opts.body);
       headers["Content-Type"] = "application/json";

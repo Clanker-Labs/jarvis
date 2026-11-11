@@ -8,6 +8,11 @@ import { ApiError, get, onAuthProblem } from "./lib/api";
 import { eventSocket } from "./lib/events";
 import type { AuthState } from "./lib/types";
 import { Appearance } from "./pages/Appearance";
+import { Connectors } from "./pages/Connectors";
+import { Knowledge } from "./pages/Knowledge";
+import { Mcp } from "./pages/Mcp";
+import { Memory } from "./pages/Memory";
+import { Skills } from "./pages/Skills";
 import { Login } from "./pages/Login";
 import { NotFound } from "./pages/NotFound";
 import { Overview } from "./pages/Overview";
@@ -35,6 +40,11 @@ const router = createBrowserRouter([
       { path: "/", element: <Overview />, children: [{ path: "turns/:id", element: <TraceDrawer /> }] },
       { path: "/providers", element: <Providers /> },
       { path: "/voice", element: <Voice /> },
+      { path: "/connectors", element: <Connectors /> },
+      { path: "/mcp", element: <Mcp /> },
+      { path: "/skills", element: <Skills /> },
+      { path: "/knowledge", element: <Knowledge /> },
+      { path: "/memory", element: <Memory /> },
       { path: "/appearance", element: <Appearance /> },
       { path: "/secrets", element: <Secrets /> },
       { path: "/settings", element: <Settings /> },

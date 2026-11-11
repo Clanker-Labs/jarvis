@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Cpu, KeyRound, LayoutDashboard, LogOut, Mic, Palette, Settings as SettingsIcon } from "lucide-react";
+import { BookOpen, Brain, Cpu, KeyRound, LayoutDashboard, LogOut, Mic, Palette, Plug, Server, Settings as SettingsIcon, Sparkles } from "lucide-react";
 import { NavLink, Outlet } from "react-router";
 import { post } from "../lib/api";
 import { LiveProvider, useLive } from "../lib/live";
@@ -10,6 +10,11 @@ const NAV = [
   { to: "/", label: "Overview", icon: LayoutDashboard },
   { to: "/providers", label: "Providers", icon: Cpu },
   { to: "/voice", label: "Voice", icon: Mic },
+  { to: "/connectors", label: "Tools & Connectors", icon: Plug },
+  { to: "/mcp", label: "MCP servers", icon: Server },
+  { to: "/skills", label: "Skills", icon: Sparkles },
+  { to: "/knowledge", label: "Knowledge", icon: BookOpen },
+  { to: "/memory", label: "Memory", icon: Brain },
   { to: "/appearance", label: "Appearance", icon: Palette },
   { to: "/secrets", label: "Secrets", icon: KeyRound },
   { to: "/settings", label: "Settings", icon: SettingsIcon },

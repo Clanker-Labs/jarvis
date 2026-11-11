@@ -14,6 +14,7 @@
     "@fontsource-variable/inter": "^5.1.0",
     "@jarvis/protocol": "workspace:*",
     "@tanstack/react-query": "^5.107.1",
+    "d3-force": "^3.0.1",
     "lucide-react": "^0.460.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
+    "@types/d3-force": "^3.0.10",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
