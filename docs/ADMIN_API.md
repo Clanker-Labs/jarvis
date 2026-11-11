@@ -84,3 +84,76 @@ Notable fields:
 `ui.snapshot` and `status.update`. Useful types: `state.change`, `status.update`, `listen.level`,
 `wake.score`, `wake.detected`, `listen.final`, `agent.tool_call`, `agent.done`, `tts.audio_level`,
 `error`.
+
+## Tools & connectors (phase 5–6)
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/tools` | — | `[{name, display, description, source: builtin\|mcp\|skill\|connector, label, icon, enabled, side_effect, declared_side_effect, override}]` |
+| PUT | `/api/tools/{name}` | `{enabled?, side_effect?}` | effective `{name, enabled, side_effect}` — overrides can only make a tool **stricter**; show the effective level |
+| GET | `/api/connectors` | — | `{connectors:[{id, name, description, auth: none\|api_key\|oauth2, enabled, error, required_secrets, missing_secrets, connected: bool\|null, active, tools:[{name, side_effect, description}]}], redirect_uri}` |
+| POST | `/api/connectors/{id}/connect` | — | `{auth_url}` → open it (same tab or popup). Google redirects back to `/connectors?connected=<id>` or `?error=<msg>` |
+| POST | `/api/connectors/oauth/complete` | `{url}` | fallback: paste the URL the browser landed on after consent |
+| POST | `/api/connectors/{id}/disconnect` | — | `{ok}` |
+| POST | `/api/connectors/now/refresh` | — | the Now card `{next_event_title, next_event_start, next_event_location, unread_important}` |
+
+Config sections: `tools` (`web_search_backend`, `searxng_url`, `url_allow_private`, `files_dir`,
+`overrides`), `connectors` (`enabled{id: bool}`, `redirect_uri`, `now_refresh_s`).
+
+## MCP servers
+
+Servers are edited through `PUT /api/config/mcp` with the **whole** list:
+`{servers:[{name (a-z0-9_-), transport: stdio|http, command, args[], env{}, url, headers{}, enabled, allowed_tools: [names]|null (null = all), side_effects{tool: none|reversible|irreversible}, timeout_s}]}`.
+Env/header values may reference secrets as `${SECRET_NAME}` — encourage that over pasting tokens.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/mcp` | — | `[server config without env/header values + env_keys, header_keys, status: starting\|connected\|error\|stopped\|disabled, error, tools:[{name, display, wire, description, side_effect, enabled, annotations}]]` |
+| POST | `/api/mcp/test` | a server config | `{ok, tools:[{name, description, side_effect}]}` or `{ok:false, error}` (connects once, doesn't save) |
+| POST | `/api/mcp/reload` | — | restarts all servers; returns the list |
+
+## Skills
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/skills` | — | `[{name, description, triggers, enabled, error, scripts, files, manifest}]` |
+| POST | `/api/skills/reload` | — | list |
+| GET | `/api/skills/{name}/file?path=SKILL.md` | — | `{path, content}` |
+| PUT | `/api/skills/{name}/file?path=…` | `{content}` | list (creates the skill if new; name = lowercase/digits/dashes) |
+| DELETE | `/api/skills/{name}` | — | list |
+| POST | `/api/skills/upload` | raw zip bytes (`Content-Type: application/zip`) | `{installed, skills}` |
+
+Enable/disable: `PUT /api/config/skills {disabled: [names]}`. A new skill's SKILL.md needs frontmatter
+`---\nname: <folder name>\ndescription: …\ntriggers: [...]\n---`.
+
+## Knowledge (phase 7)
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/knowledge` | — | `{sources:[{id, kind: file\|url\|mail, uri, title, status: queued\|extracting\|embedding\|graph\|ready\|error, error, chunks, created, updated}], stats:{chunks, vectors, entities, relations, communities, queue}, embedder, vector_backend, watch_folder}` — poll every few seconds while anything isn't ready/error |
+| POST | `/api/knowledge/upload?filename=<name>` | raw file bytes (≤ 50 MB; pdf md txt docx html csv json rst) | `{source_id}` |
+| POST | `/api/knowledge/url` | `{url}` | `{source_id}` |
+| POST | `/api/knowledge/mail` | `{thread_id}` | `{source_id}` (Gmail must be connected) |
+| GET | `/api/knowledge/sources/{id}/chunks` | — | `[{id, idx, text, meta:{page?, pages?, section?}}]` |
+| POST | `/api/knowledge/sources/{id}/reingest` | — | `{ok}` |
+| DELETE | `/api/knowledge/sources/{id}` | — | `{ok}` |
+| GET | `/api/knowledge/graph?limit=300` | — | `{nodes:[{id, name, type, community, mentions}], edges:[{src, dst, label}], communities:[{id, title, summary, size}]}` |
+| POST | `/api/knowledge/communities/rebuild` | — | `{communities}` (can take a minute: LLM summaries) |
+| POST | `/api/knowledge/reindex` | — | `{chunks}` |
+| POST | `/api/knowledge/search` | `{query, k?, mode?: local\|global}` | `{hits:[{citation, score, text, source_id}], graph:{…graph_query result}}` |
+
+Config section `knowledge`: `embed_provider` (auto|remote|local|openai), `embed_base_url`, `embed_model`,
+`local_embed_model`, `openai_embed_model`, `vector_backend` (sqlite|qdrant), `qdrant_url`, `chunk_chars`,
+`chunk_overlap`, `rerank` (off|local), `rerank_model`, `graph_enabled`, `graph_route` (chat|tools),
+`watch_folder`.
+
+## Memory & timers
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/memory` | — | `[{id, fact, source, created, updated}]` |
+| POST | `/api/memory` | `{fact}` | `{id}` |
+| PUT | `/api/memory/{id}` | `{fact}` | `{ok}` |
+| DELETE | `/api/memory/{id}` | — | `{ok}` |
+| GET | `/api/timers` | — | `[{id, kind: timer\|reminder, label, due, created}]` |
+| DELETE | `/api/timers/{id}` | — | `{ok}` |
