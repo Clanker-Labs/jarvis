@@ -16,15 +16,17 @@ Pi (UI + audio + wake word)  ──WebSocket/JSON──►  Brain (agent, tools,
 | `services/audio-node` | Pi audio: mic capture, openWakeWord, Silero VAD, playback, barge-in |
 | `packages/protocol` | The typed event protocol (pydantic → generated TypeScript) |
 | `skills/` | Your skills (`SKILL.md` folders), hot-reloaded |
-| `deploy/` | docker-compose, systemd units, kiosk launcher |
+| `compose.yaml`, `deploy/` | docker compose stack, Dockerfiles, kiosk launcher |
 | `docs/` | [Architecture](docs/ARCHITECTURE.md) · [Decisions](docs/DECISIONS.md) · [Pi setup](docs/SETUP_PI.md) · [Adding a connector](docs/ADDING_A_CONNECTOR.md) |
 
 ## Quick start
 
+Everything is deployed with **docker compose**; only the kiosk browser runs on the host.
+
 ```bash
 make env          # .env with generated secrets (prints the initial admin password)
-make install-pi   # on the Pi: audio node + kiosk UI (+ BRAIN=1 to run the brain there too)
-make up           # brain: docker compose if available, otherwise a native user service
+make install-pi   # on the Pi: Docker, stack up, kiosk autostart (see docs/SETUP_PI.md)
+make up           # (re)build + start — `make ps`, `make logs`, `make down`
 ```
 
 Development:

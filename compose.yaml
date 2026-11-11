@@ -1,0 +1,79 @@
+# JARVIS deployment. `make up` (or `docker compose up -d --build`) from the repo root.
+#
+# Profiles (set COMPOSE_PROFILES in .env):
+#   brain  — orchestrator + admin API (ports 8000/9000)          → the brain host
+#   pi     — kiosk UI server (127.0.0.1:8080) + audio node        → the Pi
+#   qdrant — vector DB for knowledge (optional; sqlite-vec is the default)
+# Everything on one Pi: COMPOSE_PROFILES=brain,pi (the default).
+#
+# Networking: jarvis services use the host network and bind only to what .env says
+# (127.0.0.1 or the Tailscale IP — the brain refuses anything else). Nothing is published on
+# 0.0.0.0. The kiosk browser itself runs on the host desktop (deploy/kiosk).
+name: jarvis
+
+x-common: &common
+  env_file: .env
+  restart: unless-stopped
+  network_mode: host
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  brain:
+    <<: *common
+    profiles: [brain]
+    build:
+      context: .
+      dockerfile: deploy/docker/brain.Dockerfile
+    image: jarvis/brain:latest
+    environment:
+      JARVIS_DATA_DIR: /data
+    volumes:
+      - jarvis-data:/data
+      - ./skills:/app/skills
+    mem_limit: 1200m
+
+  ui:
+    <<: *common
+    profiles: [pi]
+    build:
+      context: .
+      dockerfile: deploy/docker/ui.Dockerfile
+    image: jarvis/ui:latest
+    mem_limit: 64m
+    read_only: true
+
+  audio-node:
+    <<: *common
+    profiles: [pi]
+    build:
+      context: .
+      dockerfile: deploy/docker/audio-node.Dockerfile
+    image: jarvis/audio-node:latest
+    # Same uid as the desktop user, so PipeWire's pulse socket accepts the connection.
+    user: "${JARVIS_UID:-1000}:${JARVIS_GID:-1000}"
+    group_add: ["${AUDIO_GID:-29}"]
+    environment:
+      PULSE_SERVER: unix:/run/user/${JARVIS_UID:-1000}/pulse/native
+    devices:
+      - /dev/snd:/dev/snd
+    volumes:
+      # /run/user/<uid> is a tmpfs mounted at login — rslave lets it appear in the container
+      # even when the container started first (cold boot).
+      - type: bind
+        source: /run/user
+        target: /run/user
+        bind: { propagation: rslave }
+    mem_limit: 400m
+
+  qdrant:
+    profiles: [qdrant]
+    image: qdrant/qdrant:v1.12.5
+    restart: unless-stopped
+    ports: ["127.0.0.1:6333:6333"]
+    volumes: [qdrant-data:/qdrant/storage]
+
+volumes:
+  jarvis-data:
+  qdrant-data:

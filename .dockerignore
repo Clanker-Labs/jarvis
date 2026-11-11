@@ -1,0 +1,12 @@
+**/node_modules
+**/.venv
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+.git
+.env
+.env.*
+data
+models
+recordings

@@ -6,6 +6,9 @@ description = "JARVIS monorepo (uv workspace root — not a distributable packag
 
 [tool.uv]
 package = false
+# openWakeWord declares tflite-runtime on Linux, which has no wheels for 3.12; we use its ONNX
+# backend instead, so drop the dependency.
+exclude-dependencies = ["tflite-runtime"]
 
 [tool.uv.workspace]
 members = ["packages/protocol", "services/brain", "services/audio-node"]
@@ -33,7 +36,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S", "B011", "SIM117"]
+"**/tests/**" = ["S", "B011", "SIM117", "ASYNC109", "ASYNC110", "RUF059"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

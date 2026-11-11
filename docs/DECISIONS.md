@@ -45,8 +45,8 @@ added beyond the spec, each for a real path: `IDLE → LISTENING` (tap-to-talk s
 
 ### Network binding
 Every listener binds to `127.0.0.1` or a Tailscale address (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`);
-the brain refuses to start otherwise (`settings.is_safe_bind`). `0.0.0.0` is accepted only inside a
-container, where compose publishes ports on `${TAILSCALE_IP}` only. The kiosk UI server binds to
+the brain refuses to start otherwise (`settings.is_safe_bind`), wildcards included. Containers use
+host networking, so the same guard applies inside Docker. The kiosk UI server binds to
 `127.0.0.1` only.
 
 ### WebSocket auth
@@ -72,12 +72,76 @@ Night mode and screen sleep are one black overlay (no CSS filters over the canva
 renderer stops drawing. The panel itself isn't powered off — that needs compositor-specific DPMS
 control; revisit if burn-in or power matters.
 
-### Kiosk UI served by a 60-line Python server on the Pi
+### Kiosk UI served by a 60-line Python server
 `deploy/ui-server.py` serves `apps/ui/dist` on `127.0.0.1:8080` with an SPA fallback and a runtime
 `/config.json` (brain URL + token from `.env`). No nginx, no Node at runtime. The brain can also
 serve the UI itself (`JARVIS_UI_DIST`) when you'd rather open it from another machine.
 
-### No Docker on the Pi
-`make up` uses docker compose when Docker exists, otherwise installs the brain as a native
-**user** systemd service. All Pi-side services are user units (`systemctl --user`) with lingering
-enabled, so they start at boot without a login and without root.
+### Deployment: docker compose for every service
+One `compose.yaml` at the repo root runs everything; profiles pick what runs on a host
+(`COMPOSE_PROFILES`: `brain`, `pi` = ui + audio-node, `qdrant`). One Pi = `brain,pi`; moving the
+brain = `brain` on the GPU box, `pi` on the Pi, and point `BRAIN_URL` at it. Containers restart at
+boot (`restart: unless-stopped`); only the kiosk *browser* runs on the host, because it needs the
+desktop session.
+
+- **Host networking** for jarvis services rather than published ports: binding stays controlled by
+  `.env` + the bind guard (a published `${IP:-}:8000` silently becomes `0.0.0.0` when the variable is
+  empty), and the kiosk/audio node reach `127.0.0.1` naturally.
+- **Audio in a container**: the node runs as the desktop user's uid and talks to PipeWire through its
+  Pulse socket (`/run/user` bind-mounted with `rslave` propagation, so a container that starts before
+  the desktop login still sees the socket appear). `/dev/snd` is mapped as a raw-ALSA fallback. The
+  mic loop retries with backoff if the device isn't there yet.
+- **Models baked into images** (wake word/VAD in the audio-node image) so a cold boot needs no
+  internet. Piper/Whisper models for the brain download once into the `jarvis-data` volume.
+- `make dev-*` still runs services natively for development.
+
+## Phase 2 — voice loop
+
+### Audio I/O through `arecord` / `aplay`
+No PortAudio on the box, and alsa-utils is everywhere. Killing `aplay` is the fastest stop for
+barge-in. Playback is paced in real time with a ~160 ms lead (`PLAYBACK_LEAD_MS`) so the OS pipe never
+holds seconds of audio; `tts.audio_level` is computed from the PCM being written and scheduled for
+the moment it becomes audible, so the core pulses with the voice rather than ahead of it.
+
+### Wake word + VAD on the node; endpointing decided locally
+openWakeWord's ONNX backend with the bundled `hey_jarvis` model (≈21 ms per 80 ms chunk on the Pi 4),
+Silero VAD via openWakeWord's bundled ONNX model (≈4 ms per chunk) — no torch. `tflite-runtime`
+(declared by openWakeWord on Linux, no 3.12 wheels) is excluded via `tool.uv.exclude-dependencies`.
+Endpointing (`Endpointer`) is a pure class: speech starts after 2 consecutive speech chunks, ends
+after 700 ms below threshold (with 0.7× hysteresis once talking), 30 s cap, 6 s no-speech timeout.
+On the wake word the node starts capturing immediately and stops any playback itself, then informs
+the brain — no network round trip on the critical path. Follow-up captures send ~320 ms of pre-roll
+because speech is detected a few chunks late; wake-word captures don't (the pre-roll *is* the wake
+word).
+
+### STT chain: Deepgram → OpenAI → remote Whisper → local Whisper
+Configurable order in admin; engines without credentials are skipped. The chain buffers the full
+utterance, so a streaming engine dying mid-sentence falls back to batch transcription of the same
+audio (no "please repeat"). "faster-whisper on a tailnet GPU box" is just the OpenAI-compatible
+adapter pointed at a faster-whisper server (e.g. speaches) — no bespoke protocol. Local
+`tiny.en` (int8) is the last resort: ~3.4 s for a short sentence on the Pi 4 CPU — slow, but it works
+with the internet cable pulled.
+
+### TTS chain: OpenAI (fable + butler instructions) → ElevenLabs (George) → Piper (alan, en_GB)
+Engines are swapped only before the first byte of a sentence, never mid-sentence, and once a reply
+falls back it keeps that voice to the end. Cloud engines get 6 s to start; local ones 30 s (model
+load). Mixed sample rates within one reply are resampled to the stream's rate. Piper and Whisper
+are pre-loaded at brain start (`JARVIS_WARM_LOCAL_VOICE`) so an offline fallback is immediate.
+Using any non-primary engine raises the UI's "offline voice" badge.
+
+### Sentence streaming
+`SentenceSplitter` releases the first sentence as soon as it is complete (it decides
+time-to-first-audio); sentences that arrive together after that are merged up to ~200 chars for
+better prosody, never into the first one. Abbreviations and decimals don't split. Markdown, lists
+and URLs are stripped before speaking.
+
+### The follow-up window waits for real playback
+The brain opens the 8 s follow-up window when the node reports `playback.done`, not when it
+finished *sending* audio (which is seconds earlier). The node then waits for actual speech before
+announcing `listen.start`, so silence in the window never produces an empty turn.
+
+### Known gaps (tracked)
+- Wake threshold / chime / VAD timings from the admin Voice page must reach the node: the node
+  reads `.env` today; a `node.config` push arrives with the admin panel (phase 4).
+- Docker images could not be built on the dev Pi (no Docker daemon, no sudo); the compose file is
+  validated with `docker compose config`, and CI builds the images.

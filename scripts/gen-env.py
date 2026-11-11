@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import os
 import secrets
 import subprocess
 from pathlib import Path
@@ -32,7 +33,19 @@ def tailscale_ip() -> str:
         return ""
 
 
+def audio_gid() -> str:
+    try:
+        import grp
+
+        return str(grp.getgrnam("audio").gr_gid)
+    except (ImportError, KeyError):
+        return "29"
+
+
 generated = {
+    "JARVIS_UID": str(os.getuid()),
+    "JARVIS_GID": str(os.getgid()),
+    "AUDIO_GID": audio_gid(),
     "JARVIS_NODE_TOKEN": secrets.token_urlsafe(32),
     "JARVIS_SECRET_KEY": base64.urlsafe_b64encode(secrets.token_bytes(32)).decode(),
     "ADMIN_BOOTSTRAP_PASSWORD": secrets.token_urlsafe(12),

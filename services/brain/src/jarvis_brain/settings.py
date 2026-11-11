@@ -18,17 +18,16 @@ TAILSCALE_V4 = ipaddress.ip_network("100.64.0.0/10")
 TAILSCALE_V6 = ipaddress.ip_network("fd7a:115c:a1e0::/48")
 
 
-def is_safe_bind(host: str, *, in_container: bool) -> bool:
-    """Only loopback or Tailscale addresses. ``0.0.0.0`` is allowed *inside* a container only,
-    where docker-compose publishes the port on the Tailscale IP."""
+def is_safe_bind(host: str) -> bool:
+    """Only loopback or Tailscale addresses — never a wildcard or LAN/public address.
+
+    Containers use host networking (see compose.yaml), so this holds inside Docker too."""
     if host in ("localhost",):
         return True
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
         return False
-    if ip.is_unspecified:
-        return in_container
     return ip.is_loopback or ip in TAILSCALE_V4 or ip in TAILSCALE_V6
 
 
@@ -39,7 +38,10 @@ class Settings(BaseSettings):
 
     env: str = Field("dev", alias="JARVIS_ENV")
     data_dir: Path = Field(Path("data"), alias="JARVIS_DATA_DIR")
-    in_container: bool = Field(False, alias="JARVIS_IN_CONTAINER")
+    # Internet/weather probes. Off in tests.
+    background_tasks: bool = Field(True, alias="JARVIS_BACKGROUND_TASKS")
+    # Load offline voice models (Piper, faster-whisper) at startup so a fallback is instant.
+    warm_local_voice: bool = Field(True, alias="JARVIS_WARM_LOCAL_VOICE")
 
     brain_host: str = Field("127.0.0.1", alias="BRAIN_HOST")
     brain_port: int = Field(8000, alias="BRAIN_PORT")
@@ -75,7 +77,7 @@ class Settings(BaseSettings):
 
     def check_binds(self) -> None:
         for name, host in (("BRAIN_HOST", self.brain_host), ("ADMIN_HOST", self.admin_host)):
-            if not is_safe_bind(host, in_container=self.in_container):
+            if not is_safe_bind(host):
                 raise SystemExit(
                     f"Refusing to bind {name}={host}: use 127.0.0.1 or this host's Tailscale IP "
                     "(100.x.y.z). See docs/DECISIONS.md#network-binding."

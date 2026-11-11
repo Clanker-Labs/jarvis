@@ -9,7 +9,13 @@ from starlette.websockets import WebSocketDisconnect
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(JARVIS_DATA_DIR=tmp_path, JARVIS_NODE_TOKEN="t0k", JARVIS_ENV="test")
+    return Settings(
+        JARVIS_DATA_DIR=tmp_path,
+        JARVIS_NODE_TOKEN="t0k",
+        JARVIS_ENV="test",
+        JARVIS_BACKGROUND_TASKS=False,
+        JARVIS_WARM_LOCAL_VOICE=False,
+    )
 
 
 def test_health(settings):
@@ -58,8 +64,4 @@ def test_node_ws_handshake(settings):
     ],
 )
 def test_bind_guard(host, ok):
-    assert is_safe_bind(host, in_container=False) is ok
-
-
-def test_bind_guard_container_allows_unspecified():
-    assert is_safe_bind("0.0.0.0", in_container=True)
+    assert is_safe_bind(host) is ok

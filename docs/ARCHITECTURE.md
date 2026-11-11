@@ -15,16 +15,20 @@
 
 ## Services
 
-| Service | Runs on | Port | Notes |
-|---|---|---|---|
-| `ui-server` | Pi | 127.0.0.1:8080 | static kiosk build + `/config.json` |
-| `audio-node` | Pi | — (client) | connects to `BRAIN_URL/ws/node` |
-| `brain` | Pi (dev) or tailnet host | 8000 | `/health`, `/ws/ui`, `/ws/node` |
-| `admin` | same process as brain | 9000 | separate FastAPI app + separate frontend |
+All services are docker compose services (`compose.yaml`); the kiosk browser is the only host process.
 
-Moving the brain off the Pi: run `make up` on the new host, then on the Pi set
-`BRAIN_URL=ws://<host-tailscale-ip>:8000`, `BRAIN_WS_URL=ws://<host-tailscale-ip>:8000/ws/ui`, and add
-`http://127.0.0.1:8080` to the brain's `UI_ORIGINS` (it is there by default).
+| Compose service | Profile | Runs on | Port | Notes |
+|---|---|---|---|---|
+| `ui` | `pi` | Pi | 127.0.0.1:8080 | static kiosk build + `/config.json` |
+| `audio-node` | `pi` | Pi | — (client) | connects to `BRAIN_URL/ws/node`; PipeWire via Pulse socket |
+| `brain` | `brain` | Pi or tailnet host | 8000 | `/health`, `/ws/ui`, `/ws/node` |
+| (admin) | `brain` | same process as brain | 9000 | separate FastAPI app + separate frontend |
+| `qdrant` | `qdrant` | brain host | 127.0.0.1:6333 | optional vector DB |
+
+Moving the brain off the Pi: on the new host set `COMPOSE_PROFILES=brain`, `BRAIN_HOST`/`ADMIN_HOST` to
+its Tailscale IP and `make up`; on the Pi set `COMPOSE_PROFILES=pi`,
+`BRAIN_URL=ws://<host-tailscale-ip>:8000`, `BRAIN_WS_URL=ws://<host-tailscale-ip>:8000/ws/ui`, then
+`make up`. `http://127.0.0.1:8080` is in the brain's default `UI_ORIGINS`.
 
 ## Event flow of one turn
 

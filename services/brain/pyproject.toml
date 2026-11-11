@@ -10,7 +10,15 @@ dependencies = [
   "pydantic>=2.9",
   "pydantic-settings>=2.6",
   "httpx>=0.28",
+  "cryptography>=43",
+  "pyyaml>=6.0",
+  "numpy>=2.0",
+  "websockets>=14",
 ]
+
+[project.optional-dependencies]
+# Offline voice on the brain host: Piper TTS + faster-whisper STT.
+local-voice = ["piper-tts>=1.3", "faster-whisper>=1.1"]
 
 [project.scripts]
 jarvis-brain = "jarvis_brain.main:main"

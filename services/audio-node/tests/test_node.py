@@ -1,0 +1,141 @@
+import asyncio
+
+from jarvis_audio.audio_io import CHUNK_BYTES, Player
+from jarvis_audio.node import AudioNode
+from jarvis_audio.settings import NodeSettings
+from jarvis_protocol import (
+    BargeIn,
+    ListenEnd,
+    ListenStart,
+    NodeCommand,
+    TtsEnd,
+    TtsStart,
+    WakeDetected,
+    parse_event,
+    unpack_audio,
+)
+
+SPEECH = b"\x10\x27" * (CHUNK_BYTES // 2)
+SILENCE = b"\x00" * CHUNK_BYTES
+
+
+class FakeWake:
+    name = "fake"
+
+    def __init__(self):
+        self.fire = False
+
+    def process(self, pcm):
+        if self.fire:
+            self.fire = False
+            return 0.9
+        return None
+
+    def reset(self):
+        pass
+
+
+class FakeVad:
+    def prob(self, pcm):
+        return 0.9 if pcm == SPEECH else 0.0
+
+    def reset(self):
+        pass
+
+
+def make():
+    s = NodeSettings(VAD_END_SILENCE_MS=240, WAKE_CHIME=False)
+    played = []
+    node = AudioNode(
+        s,
+        mic=None,
+        wake=FakeWake(),
+        vad=FakeVad(),
+        player=Player(lead_ms=50, sink=lambda pcm, r: played.append(pcm)),
+    )
+    node.ws = object()  # pretend connected; outgoing messages land in node._send_q
+    return node, played
+
+
+def drain(node):
+    out = []
+    while not node._send_q.empty():
+        item = node._send_q.get_nowait()
+        out.append(unpack_audio(item) if isinstance(item, bytes) else parse_event(item))
+    return out
+
+
+async def test_wake_then_capture_then_endpoint():
+    node, _ = make()
+    node.wake.fire = True
+    await node.process_chunk(SPEECH)  # wake fires on this chunk
+    for chunk in [SPEECH] * 3 + [SILENCE] * 4:
+        await node.process_chunk(chunk)
+    msgs = drain(node)
+    kinds = [m.type if hasattr(m, "type") else "audio" for m in msgs]
+    assert kinds[:2] == ["wake.detected", "listen.start"]
+    assert "audio" in kinds
+    end = msgs[-1]
+    assert isinstance(end, ListenEnd) and end.reason == "silence"
+    assert node.capture is None
+
+
+async def test_wake_during_playback_is_barge_in():
+    node, played = make()
+    await node.handle_event(TtsStart(stream_id=7, sample_rate=16000))
+    node.handle_audio(b"\x07\x00\x00\x00" + b"\x01\x00" * 16000)
+    await asyncio.sleep(0.05)
+    assert node.player.active
+    node.wake.fire = True
+    await node.process_chunk(SPEECH)
+    assert not node.player.active
+    msgs = drain(node)
+    assert any(isinstance(m, BargeIn) for m in msgs)
+    assert any(isinstance(m, WakeDetected) for m in msgs)
+    # Late frames for the old stream are dropped.
+    node.handle_audio(b"\x07\x00\x00\x00" + b"\x01\x00" * 100)
+    assert node.player._queue.empty()
+
+
+async def test_follow_up_waits_for_speech_before_announcing():
+    node, _ = make()
+    await node.handle_event(NodeCommand(command="listen.open", timeout_s=5, follow_up=True))
+    await node.process_chunk(SILENCE)
+    assert not any(isinstance(m, ListenStart) for m in drain(node))
+    await node.process_chunk(SPEECH)
+    await node.process_chunk(SPEECH)
+    msgs = drain(node)
+    start = next(m for m in msgs if isinstance(m, ListenStart))
+    assert start.follow_up
+    assert any(isinstance(m, tuple) for m in msgs)  # pre-roll audio sent
+
+
+async def test_follow_up_timeout():
+    node, _ = make()
+    await node.handle_event(NodeCommand(command="listen.open", timeout_s=0.3, follow_up=True))
+    for _ in range(5):
+        await node.process_chunk(SILENCE)
+    end = [m for m in drain(node) if isinstance(m, ListenEnd)]
+    assert end and end[0].reason == "timeout" and node.capture is None
+
+
+async def test_playback_reports_done():
+    node, played = make()
+    await node.handle_event(TtsStart(stream_id=3, sample_rate=16000))
+    node.handle_audio(b"\x03\x00\x00\x00" + b"\x01\x00" * 1600)
+    await node.handle_event(TtsEnd(stream_id=3))
+    async with asyncio.timeout(2):
+        while not any(
+            isinstance(m, str) and parse_event(m).type == "playback.done"
+            for m in list(node._send_q._queue)
+        ):
+            await asyncio.sleep(0.02)
+    assert played
+
+
+async def test_mute_disables_wake():
+    node, _ = make()
+    await node.handle_event(NodeCommand(command="mute"))
+    node.wake.fire = True
+    await node.process_chunk(SPEECH)
+    assert node.capture is None

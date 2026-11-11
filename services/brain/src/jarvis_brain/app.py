@@ -83,7 +83,7 @@ def create_app(runtime: Runtime) -> FastAPI:
 
         async def pump() -> None:
             await ws.send_text(dump_event(runtime.orchestrator.snapshot()))
-            await ws.send_text(dump_event(runtime.status()))
+            await ws.send_text(dump_event(runtime.status.snapshot()))
             async for event in sub:
                 await ws.send_text(dump_event(event))
 

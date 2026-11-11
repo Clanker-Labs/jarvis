@@ -3,9 +3,9 @@ SHELL := /bin/bash
 export PATH := $(HOME)/.local/bin:$(PATH)
 export NODE_OPTIONS ?= --max-old-space-size=768
 UV ?= uv
-COMPOSE := docker compose -f deploy/docker-compose.yml --env-file .env
+COMPOSE := docker compose
 
-.PHONY: help env sync protocol protocol-check ui admin build test lint fmt typecheck dev-brain dev-ui dev-node up down logs install-pi demo clean
+.PHONY: help env sync protocol protocol-check ui admin build test lint fmt typecheck dev-brain dev-ui dev-node up down restart logs ps install-pi demo clean
 
 help: ## Show targets
 	@grep -hE "^[a-zA-Z_-]+:.*?## " $(MAKEFILE_LIST) | awk -F ":.*?## " "{printf \"  \\033[36m%-16s\\033[0m %s\\n\", \$$1, \$$2}"
@@ -47,28 +47,34 @@ fmt: ## Auto-format Python
 	$(UV) run ruff check --fix .
 	$(UV) run ruff format .
 
-dev-brain: ## Run the brain locally (reload on change)
+dev-brain: ## Run the brain natively (development)
 	$(UV) run --package jarvis-brain jarvis-brain
 
 dev-ui: ## Vite dev server for the kiosk UI
 	pnpm --filter @jarvis/ui dev
 
-dev-node: ## Run the audio node in the foreground
+dev-node: ## Run the audio node natively (development)
 	$(UV) run --package jarvis-audio-node jarvis-audio-node
 
-up: ## Start the brain (docker compose if available, else native user service)
+up: ## Build + start the stack with docker compose (profiles: COMPOSE_PROFILES in .env)
 	@test -f .env || python3 scripts/gen-env.py
-	@if command -v docker >/dev/null 2>&1; then $(COMPOSE) up -d --build; \
-	else echo "docker not found: running the brain natively"; BRAIN=1 scripts/install-brain-native.sh; fi
+	$(COMPOSE) up -d --build --remove-orphans
+	$(COMPOSE) ps
 
-down: ## Stop the brain
-	@if command -v docker >/dev/null 2>&1; then $(COMPOSE) down; else systemctl --user stop jarvis-brain; fi
+down: ## Stop the stack
+	$(COMPOSE) down
 
-logs: ## Follow logs of all JARVIS services
-	@if command -v docker >/dev/null 2>&1; then $(COMPOSE) logs -f; \
-	else journalctl --user -f -u "jarvis-*"; fi
+restart: ## Restart all services (no rebuild)
+	$(COMPOSE) restart
 
-install-pi: ## Install audio node + kiosk on this Pi (BRAIN=1 to also run the brain here)
+logs: ## Follow logs of all services
+	$(COMPOSE) logs -f --tail=100
+
+ps: ## Service status + resource usage
+	$(COMPOSE) ps
+	docker stats --no-stream $$($(COMPOSE) ps -q)
+
+install-pi: ## One-time Pi setup: Docker, .env, stack up, kiosk autostart
 	scripts/install-pi.sh
 
 demo: ## Replay recorded audio through the full pipeline
