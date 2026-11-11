@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import io
 import logging
+import re
 import time
 import wave
 from typing import TYPE_CHECKING, Any
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
     from ..runtime import Runtime
 
 log = logging.getLogger(__name__)
+
+SECRET_NAME = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
 
 # Secrets the built-in features know about (others can be added freely).
 KNOWN_SECRETS = {
@@ -310,8 +313,8 @@ def build_router(rt: Runtime, auth: AdminAuth) -> APIRouter:
 
     @api.put("/secrets/{name}", dependencies=[guard])
     async def set_secret(name: str, body: SecretBody) -> dict[str, bool]:
-        if not name.replace("_", "").isalnum() or not name.isupper() or len(name) > 64:
-            raise HTTPException(400, "Secret names are UPPER_SNAKE_CASE.")
+        if not SECRET_NAME.fullmatch(name):
+            raise HTTPException(400, "Secret names are UPPER_SNAKE_CASE, starting with a letter.")
         rt.secrets.set(name, body.value.strip())
         rt.on_secrets_changed()
         return {"ok": True}
@@ -340,12 +343,17 @@ def build_router(rt: Runtime, auth: AdminAuth) -> APIRouter:
                     while True:
                         await ws.receive_text()  # ignore; detect disconnects
 
+            # Race the next bus event against the client going away: an idle socket must still
+            # notice a disconnect, or shutdown would wait on this handler forever.
             reader = asyncio.create_task(drain_incoming())
             try:
-                async for ev in sub:
-                    if reader.done():
+                while True:
+                    nxt = asyncio.create_task(sub.queue.get())
+                    done, _ = await asyncio.wait({nxt, reader}, return_when=asyncio.FIRST_COMPLETED)
+                    if reader in done:
+                        nxt.cancel()
                         break
-                    await ws.send_text(dump_event(ev))
+                    await ws.send_text(dump_event(nxt.result()))
             finally:
                 reader.cancel()
         except (WebSocketDisconnect, RuntimeError):

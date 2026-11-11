@@ -20,7 +20,18 @@ async def serve() -> None:
     settings = get_settings()
     setup_logging(settings.log_level)
     settings.check_binds()
-    if not settings.node_token.get_secret_value():
+    if settings.env != "dev":
+        missing = [
+            n
+            for n, v in (
+                ("JARVIS_SECRET_KEY", settings.secret_key),
+                ("JARVIS_NODE_TOKEN", settings.node_token),
+            )
+            if not v.get_secret_value()
+        ]
+        if missing:
+            raise SystemExit(f"{', '.join(missing)} must be set outside dev (run `make env`).")
+    elif not settings.node_token.get_secret_value():
         log.warning("JARVIS_NODE_TOKEN is empty — WebSockets are unauthenticated (dev only)")
     runtime = Runtime(settings)
     brain = uvicorn.Server(
@@ -50,7 +61,19 @@ async def serve() -> None:
         settings.admin_host,
         settings.admin_port,
     )
-    await asyncio.gather(brain.serve(), admin.serve())
+    # If either server stops (e.g. its port is taken), stop the other and exit non-zero, rather
+    # than leaving a half-alive process for the supervisor to wonder about.
+    servers = {
+        asyncio.create_task(brain.serve(), name="brain"): brain,
+        asyncio.create_task(admin.serve(), name="admin"): admin,
+    }
+    done, pending = await asyncio.wait(servers, return_when=asyncio.FIRST_COMPLETED)
+    failed = [t.get_name() for t in done if t.exception() or not servers[t].started]
+    for task in pending:
+        servers[task].should_exit = True
+    await asyncio.gather(*pending, return_exceptions=True)
+    if failed:
+        raise SystemExit(f"{', '.join(failed)} server failed to start")
 
 
 def main() -> None:

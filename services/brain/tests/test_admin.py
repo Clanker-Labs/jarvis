@@ -174,3 +174,24 @@ def test_skills_api_write_and_path_safety(client, rt, tmp_path):
     assert rt.tools.get("skill_load") is not None
     r = client.put("/api/skills/hello/file?path=../../evil.txt", json={"content": "x"}, headers=H)
     assert r.status_code == 400
+
+
+def test_event_socket_closes_cleanly_when_idle(client):
+    """Regression: an idle /api/events socket must notice the client leaving (shutdown hang)."""
+    signed_in(client)
+    with client.websocket_connect("/api/events", headers={"origin": "http://testserver"}) as ws:
+        assert ws.receive_json()["type"] == "ui.snapshot"
+        assert ws.receive_json()["type"] == "status.update"
+    # Leaving the block closes the socket; the handler must return without further bus events.
+
+
+def test_event_socket_rejects_cross_origin(client):
+    signed_in(client)
+    import pytest as _pytest
+    from starlette.websockets import WebSocketDisconnect
+
+    with _pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            "/api/events", headers={"origin": "http://evil.example"}
+        ) as ws:
+            ws.receive_json()
