@@ -14,6 +14,8 @@ from jarvis_protocol import NodeConfig
 from .agent.loop import Agent
 from .bus import EventBus
 from .config import ConfigStore, Section
+from .connectors.base import ConnectorRegistry
+from .connectors.oauth import OAuthManager
 from .db import Database
 from .hub import Hub
 from .mcp.manager import MCPManager
@@ -96,6 +98,9 @@ class Runtime:
             self.tools.register(tool)
         self._apply_tool_overrides()
         self.mcp = MCPManager(self.config, self.secrets, self.tools)
+        self.oauth = OAuthManager(self.secrets)
+        self.connectors = ConnectorRegistry(self.config, self.secrets, self.oauth, self.tools)
+        self.connectors.on_now.append(self._on_now)
         self.skills = SkillManager(
             settings.skills_dir,
             settings.data_dir / "skill-runs",
@@ -169,6 +174,12 @@ class Runtime:
 
     def on_secrets_changed(self) -> None:
         self.spawn(self.router.check_health())
+        self.connectors.sync()
+
+    def _on_now(self, card: Any) -> None:
+        if card != self.status.now:
+            self.status.set_now(card)
+            self.bus.publish(self.orchestrator.snapshot())
 
     def _on_node_change(self, connected: bool) -> None:
         self.status.update(mic=connected)
@@ -212,6 +223,7 @@ class Runtime:
         await self.scheduler.start()
         await self.skills.start()
         await self.mcp.start()
+        await self.connectors.start()
         if self.settings.background_tasks:
             await self.status.start()
             await self.router.start()
@@ -221,6 +233,7 @@ class Runtime:
     async def stop(self) -> None:
         await self.orchestrator.stop()
         await self.mcp.stop()
+        await self.connectors.stop()
         await self.skills.stop()
         await self.scheduler.stop()
         await self.router.stop()

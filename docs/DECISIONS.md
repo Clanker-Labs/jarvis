@@ -305,3 +305,36 @@ held). Making the prompt explicit — actions only happen through tools, claimin
 never state what you haven't looked up — fixed `chat:latest`: notes, skill-driven briefing with real
 weather, confirmation read-back with the actual note text, and real deletion, at 0.6–4 s per turn.
 The tools route still prefers Claude when a key is configured.
+
+## Phase 6 — connectors
+
+### One folder + one manifest per connector
+`connectors/<id>/{manifest.yaml, connector.py}`; discovered at start; a connector's tools are
+registered only when it is enabled, its required secrets exist and (for OAuth) it is connected. The
+loader refuses code that disagrees with the manifest. `connectors/_template/` (Home Assistant) is a
+working copy-me example; `docs/ADDING_A_CONNECTOR.md` is the 30-minute guide.
+
+### OAuth without Google client libraries
+Authorization code + PKCE (S256) over httpx, `access_type=offline` + `prompt=consent` for a refresh
+token, automatic refresh, revocation on disconnect. Tokens are stored in the encrypted secret store
+(`OAUTH_TOKEN_<ID>`). The callback is reached by a cross-site redirect, so the SameSite=Strict admin
+cookie isn't sent; it is authenticated by the single-use, 10-minute `state` that a signed-in admin
+created (bound server-side to the PKCE verifier). Google requires https or loopback redirect URIs:
+recommended path is `tailscale serve` HTTPS; fallback is a loopback redirect plus "paste the URL you
+landed on".
+
+### Gmail and Calendar scopes
+Gmail: `gmail.readonly` + `gmail.compose` (search, read, draft, send). Calendar:
+`calendar.events` (primary calendar; list + create). `gmail_send` and `calendar_create_event` are
+irreversible with natural read-backs ("reply to sam@…, saying: On my way.", "add 'Haircut' to your
+calendar tomorrow at 10:00 for an hour"); drafts are reversible. Replies keep the thread
+(`threadId`, `In-Reply-To`, `References`, "Re:" subject).
+
+### Now card
+Connectors may implement `now()`; the registry merges results every 5 minutes (and right after a
+connect) into the UI's Now card: next timed event in the coming week (title, start, location) and
+unread-important mail from the last 7 days. A changed card is pushed with a `ui.snapshot`.
+
+### What needs you
+Google Cloud OAuth client (ID + secret) — see ADDING_A_CONNECTOR.md § OAuth redirect URI. Until
+then the connectors show as "missing secrets" and their tools stay unregistered.

@@ -1,0 +1,17 @@
+id: gmail
+name: Gmail
+type: connector
+description: Read, search and summarise your mail; draft replies; send with spoken confirmation.
+auth: oauth2
+required_secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET]
+oauth:
+  provider: google
+  scopes:
+    - https://www.googleapis.com/auth/gmail.readonly
+    - https://www.googleapis.com/auth/gmail.compose
+enabled: true
+tools:
+  - {name: gmail_search, side_effect: none, description: Search mail with Gmail query syntax}
+  - {name: gmail_read, side_effect: none, description: Read one message}
+  - {name: gmail_draft, side_effect: reversible, description: Create a draft (not sent)}
+  - {name: gmail_send, side_effect: irreversible, description: Send an email or reply}

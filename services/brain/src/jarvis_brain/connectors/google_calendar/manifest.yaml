@@ -1,0 +1,14 @@
+id: google-calendar
+name: Google Calendar
+type: connector
+description: Read your calendar and add events (with spoken confirmation).
+auth: oauth2
+required_secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET]
+oauth:
+  provider: google
+  scopes:
+    - https://www.googleapis.com/auth/calendar.events
+enabled: true
+tools:
+  - {name: calendar_events, side_effect: none, description: List events for a day or range}
+  - {name: calendar_create_event, side_effect: irreversible, description: Add an event}

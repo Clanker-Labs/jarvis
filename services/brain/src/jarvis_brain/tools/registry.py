@@ -101,6 +101,10 @@ class ToolRegistry:
         self._tools[tool.name] = tool
         self._changed()
 
+    def unregister(self, name: str) -> None:
+        if self._tools.pop(name, None) is not None:
+            self._changed()
+
     def unregister_prefix(self, prefix: str) -> None:
         for name in [n for n in self._tools if n.startswith(prefix)]:
             del self._tools[name]

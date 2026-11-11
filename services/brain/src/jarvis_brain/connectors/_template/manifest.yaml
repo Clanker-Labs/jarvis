@@ -1,0 +1,12 @@
+# Copy this folder to connectors/<your_id>/ and edit. See docs/ADDING_A_CONNECTOR.md.
+id: home-assistant              # lowercase, digits, - and _; must match what create() uses
+name: Home Assistant
+type: connector
+description: Check and control smart-home devices.
+auth: api_key                   # none | api_key | oauth2
+required_secrets: [HOME_ASSISTANT_URL, HOME_ASSISTANT_TOKEN]
+enabled: true
+tools:                          # every tool the code registers, with its side effect
+  - {name: ha_state, side_effect: none, description: Read an entity's state}
+  - {name: ha_turn_on, side_effect: reversible, description: Turn something on}
+  - {name: ha_unlock_door, side_effect: irreversible, description: Unlock a door}
