@@ -18,6 +18,8 @@ from .connectors.base import ConnectorRegistry
 from .connectors.oauth import OAuthManager
 from .db import Database
 from .hub import Hub
+from .knowledge.base import KnowledgeBase
+from .knowledge.tools import make_kb_tools
 from .mcp.manager import MCPManager
 from .orchestrator import Orchestrator, Responder
 from .providers.router import Router
@@ -84,12 +86,18 @@ class Runtime:
         self.router.on_health.append(lambda ok: self.status.update(llm=ok))
         self.tools = ToolRegistry()
         self.memory = MemoryStore(self.db)
+        self.kb = KnowledgeBase(
+            self.db, self.config, self.secrets, self.router, settings.data_dir, self.models_dir
+        )
         self.scheduler = Scheduler(self.db, self._announce)
         tools_cfg = lambda: self.config.get("tools", ToolsConfig)  # noqa: E731
         builtin = [
             *make_time_weather_tools(self.config),
             *make_notes_tools(self.db),
-            *make_memory_tools(self.memory),
+            *make_memory_tools(
+                self.memory, on_add=self.kb.index_memory, semantic=self.kb.recall_memory
+            ),
+            *make_kb_tools(self.kb),
             *make_timer_tools(self.scheduler),
             *make_web_tools(self.secrets, tools_cfg),
             *make_file_tools(lambda: Path(tools_cfg().files_dir)),
@@ -101,6 +109,7 @@ class Runtime:
         self.oauth = OAuthManager(self.secrets)
         self.connectors = ConnectorRegistry(self.config, self.secrets, self.oauth, self.tools)
         self.connectors.on_now.append(self._on_now)
+        self.kb.mail_fetcher = self._fetch_mail_thread
         self.skills = SkillManager(
             settings.skills_dir,
             settings.data_dir / "skill-runs",
@@ -176,6 +185,12 @@ class Runtime:
         self.spawn(self.router.check_health())
         self.connectors.sync()
 
+    async def _fetch_mail_thread(self, thread_id: str) -> tuple[str, str]:
+        lc = self.connectors.connectors.get("gmail")
+        if lc is None or not self.connectors.active("gmail"):
+            raise ValueError("Gmail is not connected")
+        return await lc.impl.thread_text(thread_id)
+
     def _on_now(self, card: Any) -> None:
         if card != self.status.now:
             self.status.set_now(card)
@@ -224,16 +239,19 @@ class Runtime:
         await self.skills.start()
         await self.mcp.start()
         await self.connectors.start()
+        await self.kb.start(watch=self.settings.background_tasks)
         if self.settings.background_tasks:
             await self.status.start()
             await self.router.start()
         if self.settings.warm_local_voice:
             self._warm_task = asyncio.create_task(self.warm_local_voice())
+            self.spawn(self.kb.warm())
 
     async def stop(self) -> None:
         await self.orchestrator.stop()
         await self.mcp.stop()
         await self.connectors.stop()
+        await self.kb.stop()
         await self.skills.stop()
         await self.scheduler.stop()
         await self.router.stop()

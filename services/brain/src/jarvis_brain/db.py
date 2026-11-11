@@ -67,6 +67,54 @@ MIGRATIONS: list[str] = [
       INSERT INTO memories_fts(memories_fts, rowid, fact) VALUES('delete', old.id, old.fact);
       INSERT INTO memories_fts(rowid, fact) VALUES (new.id, new.fact); END;
     """,
+    # 5 — knowledge base: sources, chunks (+FTS), graph (entities, relations, communities)
+    """
+    CREATE TABLE kb_sources (
+      id INTEGER PRIMARY KEY, kind TEXT NOT NULL, uri TEXT NOT NULL UNIQUE, title TEXT,
+      content_hash TEXT, status TEXT NOT NULL, error TEXT, chunks INTEGER DEFAULT 0,
+      created REAL NOT NULL, updated REAL NOT NULL, meta TEXT
+    );
+    CREATE TABLE kb_chunks (
+      id INTEGER PRIMARY KEY, source_id INTEGER NOT NULL REFERENCES kb_sources(id) ON DELETE CASCADE,
+      idx INTEGER NOT NULL, text TEXT NOT NULL, meta TEXT
+    );
+    CREATE INDEX kb_chunks_source ON kb_chunks(source_id, idx);
+    CREATE VIRTUAL TABLE kb_chunks_fts USING fts5(text, content='kb_chunks', content_rowid='id');
+    CREATE TRIGGER kb_chunks_ai AFTER INSERT ON kb_chunks BEGIN
+      INSERT INTO kb_chunks_fts(rowid, text) VALUES (new.id, new.text); END;
+    CREATE TRIGGER kb_chunks_ad AFTER DELETE ON kb_chunks BEGIN
+      INSERT INTO kb_chunks_fts(kb_chunks_fts, rowid, text) VALUES('delete', old.id, old.text); END;
+    CREATE TABLE kb_entities (
+      id INTEGER PRIMARY KEY, name TEXT NOT NULL, key TEXT NOT NULL UNIQUE, type TEXT,
+      description TEXT, community INTEGER
+    );
+    CREATE VIRTUAL TABLE kb_entities_fts USING fts5(name, description, content='kb_entities', content_rowid='id');
+    CREATE TRIGGER kb_entities_ai AFTER INSERT ON kb_entities BEGIN
+      INSERT INTO kb_entities_fts(rowid, name, description) VALUES (new.id, new.name, new.description); END;
+    CREATE TRIGGER kb_entities_ad AFTER DELETE ON kb_entities BEGIN
+      INSERT INTO kb_entities_fts(kb_entities_fts, rowid, name, description)
+      VALUES('delete', old.id, old.name, old.description); END;
+    CREATE TRIGGER kb_entities_au AFTER UPDATE ON kb_entities BEGIN
+      INSERT INTO kb_entities_fts(kb_entities_fts, rowid, name, description)
+      VALUES('delete', old.id, old.name, old.description);
+      INSERT INTO kb_entities_fts(rowid, name, description) VALUES (new.id, new.name, new.description); END;
+    CREATE TABLE kb_mentions (
+      entity_id INTEGER NOT NULL REFERENCES kb_entities(id) ON DELETE CASCADE,
+      chunk_id INTEGER NOT NULL REFERENCES kb_chunks(id) ON DELETE CASCADE,
+      PRIMARY KEY (entity_id, chunk_id)
+    );
+    CREATE TABLE kb_relations (
+      id INTEGER PRIMARY KEY, src INTEGER NOT NULL REFERENCES kb_entities(id) ON DELETE CASCADE,
+      dst INTEGER NOT NULL REFERENCES kb_entities(id) ON DELETE CASCADE, label TEXT NOT NULL,
+      description TEXT, chunk_id INTEGER REFERENCES kb_chunks(id) ON DELETE CASCADE, weight REAL DEFAULT 1
+    );
+    CREATE INDEX kb_rel_src ON kb_relations(src);
+    CREATE INDEX kb_rel_dst ON kb_relations(dst);
+    CREATE TABLE kb_communities (
+      id INTEGER PRIMARY KEY, title TEXT, summary TEXT, size INTEGER, updated REAL
+    );
+    CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT);
+    """,
 ]
 
 
@@ -119,6 +167,35 @@ class Database:
     def one(self, sql: str, params: Sequence[Any] | dict[str, Any] = ()) -> dict[str, Any] | None:
         rows = self.query(sql, params)
         return rows[0] if rows else None
+
+    def load_sqlite_vec(self) -> bool:
+        """Load the sqlite-vec extension into this connection (idempotent)."""
+        if getattr(self, "_vec_loaded", False):
+            return True
+        try:
+            import sqlite_vec
+
+            with self._lock:
+                self._conn.enable_load_extension(True)
+                sqlite_vec.load(self._conn)
+                self._conn.enable_load_extension(False)
+            self._vec_loaded = True
+        except (ImportError, AttributeError, sqlite3.OperationalError) as e:
+            import logging
+
+            logging.getLogger(__name__).warning("sqlite-vec unavailable: %s", e)
+            return False
+        return True
+
+    def kv_get(self, key: str) -> str | None:
+        row = self.one("SELECT value FROM kv WHERE key=?", (key,))
+        return row["value"] if row else None
+
+    def kv_set(self, key: str, value: str) -> None:
+        self.execute(
+            "INSERT INTO kv(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
 
     def close(self) -> None:
         with self._lock:

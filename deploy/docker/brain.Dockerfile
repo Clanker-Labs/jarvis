@@ -26,11 +26,11 @@ COPY packages/protocol/pyproject.toml packages/protocol/
 COPY services/brain/pyproject.toml services/brain/
 COPY services/audio-node/pyproject.toml services/audio-node/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --package jarvis-brain --extra local-voice --no-install-workspace
+    uv sync --frozen --no-dev --package jarvis-brain --extra local-voice --extra local-embeddings --no-install-workspace
 COPY packages/protocol packages/protocol
 COPY services/brain services/brain
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --package jarvis-brain --extra local-voice
+    uv sync --frozen --no-dev --package jarvis-brain --extra local-voice --extra local-embeddings
 COPY --from=admin-ui /src/apps/admin/dist apps/admin/dist
 RUN useradd --create-home --uid 1000 jarvis && mkdir -p /data && chown jarvis /data
 USER jarvis

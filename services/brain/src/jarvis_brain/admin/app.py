@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from .. import __version__
 from .api import build_router
 from .api_connectors import build_connectors_router
+from .api_knowledge import build_knowledge_router
 from .api_tools import build_tools_router
 from .auth import AdminAuth
 
@@ -44,6 +45,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
     guarded, public = build_connectors_router(rt, auth)
     app.include_router(guarded)
     app.include_router(public)
+    app.include_router(build_knowledge_router(rt, auth))
 
     @app.middleware("http")
     async def headers(request: Request, call_next):  # type: ignore[no-untyped-def]

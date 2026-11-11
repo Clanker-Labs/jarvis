@@ -155,11 +155,14 @@ def build_tools_router(rt: Runtime, auth: AdminAuth) -> APIRouter:
 
     @api.post("/memory")
     async def add_memory(body: FactBody) -> dict[str, int]:
-        return {"id": rt.memory.add(body.fact, source="admin")}
+        mem_id = rt.memory.add(body.fact, source="admin")
+        rt.spawn(rt.kb.index_memory(mem_id, body.fact))
+        return {"id": mem_id}
 
     @api.put("/memory/{mem_id}")
     async def edit_memory(mem_id: int, body: FactBody) -> dict[str, bool]:
         rt.memory.update(mem_id, body.fact)
+        rt.spawn(rt.kb.index_memory(mem_id, body.fact))
         return {"ok": True}
 
     @api.delete("/memory/{mem_id}")

@@ -338,3 +338,53 @@ unread-important mail from the last 7 days. A changed card is pushed with a `ui.
 ### What needs you
 Google Cloud OAuth client (ID + secret) — see ADDING_A_CONNECTOR.md § OAuth redirect URI. Until
 then the connectors show as "missing secrets" and their tools stay unregistered.
+
+## Phase 7 — knowledge
+
+### Storage: SQLite everywhere by default, Qdrant optional
+Sources, chunks, BM25 (FTS5), vectors (`sqlite-vec`, loaded into the same connection) and the graph
+all live in the one SQLite file — zero ops, works on the Pi, one backup. `knowledge.vector_backend:
+qdrant` switches vectors to Qdrant over REST (compose profile `qdrant`) for a brain host with a big
+corpus. Each vector index records its embedding model + dimension; changing the model resets the
+index and admin → Knowledge → Re-index re-embeds everything (chunks and memories).
+
+### Graph store: SQLite tables + networkx, not Kùzu
+Kùzu was archived by its authors in 2025, so building on it now would mean an unmaintained native
+dependency. The graph here is small (entities/relations extracted from personal documents): tables
+`kb_entities` (+FTS), `kb_relations`, `kb_mentions` (entity ↔ chunk, for citations) and
+`kb_communities`, with networkx Louvain for community detection. LightRAG-style: the LLM extracts up
+to 12 entities/relations per chunk as JSON (chat route, so the local model does it for free);
+communities of ≥ 3 entities get a title + 2–3 sentence summary (embedded for global queries).
+**Local** queries find matching entities (FTS, falling back to entities mentioned in the best chunks)
+and return their one-hop relations plus supporting passages; **global** queries rank community
+summaries.
+
+### Embeddings
+Chain: an OpenAI-compatible embedding endpoint on the tailnet if configured (`embed_base_url` +
+`embed_model` — e.g. Ollama on spark after `ollama pull nomic-embed-text`; spark has no embedding
+model today and I didn't install one on your server), else in-process **fastembed**
+`BAAI/bge-small-en-v1.5` (ONNX, no torch; Pi 4: 0.1 s per query, ~13 chunks/s, ~330 MB), else OpenAI
+`text-embedding-3-small`. Loaded at startup so the first question isn't slow.
+
+### Retrieval
+BM25 top-N and vector top-N fused with reciprocal rank fusion (k=60). Cross-encoder re-ranking
+(fastembed `ms-marco-MiniLM-L-6-v2`) is implemented but **off by default**: ~3 s per query on the
+Pi 4 CPU is too slow for voice; turn it on when the brain runs on a faster host (it then re-ranks the
+top 8). Results carry a citation string (title + page, or section heading) and the tool tells the
+model to cite in one short phrase.
+
+### Ingestion
+Admin upload (PDF, MD, TXT, DOCX, HTML, CSV, JSON), URLs (same SSRF guard as `read_url`), pinned Gmail
+threads, and a watched folder (`data/knowledge/inbox`; add/change re-ingests, delete removes). Jobs are
+queued, resumed after restart, skipped when content is unchanged (hash), and report status
+(queued → extracting → embedding → graph → ready/error). Chunks ~1100 chars with ~180 chars of
+sentence-aligned overlap, keeping page numbers and the heading the chunk starts under.
+
+### Long-term memory
+Facts stay separate from documents (`memories` table, admin → Memory). Recall combines FTS with
+vector similarity (threshold 0.35) when an embedder is available; admin edits re-embed.
+
+### Measured on the Pi (real components)
+`docs/ARCHITECTURE.md`: 4 chunks, 46 entities, 39 relations, 5 communities ("Pi-Based Voice Kiosk
+System", …) — ingestion ~80 s, almost all of it graph extraction on spark. Hybrid search without
+re-ranking is well under a second once warm.

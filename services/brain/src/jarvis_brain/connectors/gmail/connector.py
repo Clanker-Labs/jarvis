@@ -159,6 +159,17 @@ class Gmail:
         sent = await self._post("/messages/send", await self._raw(a))
         return {"sent": True, "id": sent.get("id")}
 
+    async def thread_text(self, thread_id: str) -> tuple[str, str]:
+        """A whole thread as plain text, for pinning into the knowledge base."""
+        t = await self._get(f"/threads/{thread_id}", format="full")
+        msgs = t.get("messages", [])
+        title = _header(msgs[0], "Subject") if msgs else f"Thread {thread_id}"
+        parts = [
+            f"From: {_header(m, 'From')}\nDate: {_header(m, 'Date')}\n\n{extract_body(m.get('payload', {}))}"
+            for m in msgs
+        ]
+        return f"Email: {title}", "\n\n---\n\n".join(parts)
+
     async def now(self) -> dict[str, Any]:
         listing = await self._get(
             "/messages", q="is:unread is:important newer_than:7d", maxResults=50

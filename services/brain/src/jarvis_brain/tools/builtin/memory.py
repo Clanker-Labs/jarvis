@@ -5,7 +5,9 @@ Viewable/deletable in admin → Memory. Recall is keyword (FTS5) based; phase 7 
 
 from __future__ import annotations
 
+import contextlib
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from jarvis_protocol import SideEffect
@@ -54,6 +56,9 @@ class MemoryStore:
             (fts_query(query), limit),
         )
 
+    def get(self, mem_id: int) -> dict[str, Any] | None:
+        return self.db.one("SELECT id, fact, created FROM memories WHERE id=?", (mem_id,))
+
     def all(self) -> list[dict[str, Any]]:
         return self.db.query(
             "SELECT id, fact, source, created, updated FROM memories ORDER BY updated DESC"
@@ -69,12 +74,26 @@ class MemoryStore:
         return self.db.execute("DELETE FROM memories WHERE id=?", (mem_id,)).rowcount > 0
 
 
-def make_memory_tools(store: MemoryStore) -> list[Tool]:
+def make_memory_tools(
+    store: MemoryStore,
+    *,
+    on_add: Callable[[int, str], Awaitable[None]] | None = None,
+    semantic: Callable[[str, int], Awaitable[list[int]]] | None = None,
+) -> list[Tool]:
     async def remember(a: RememberArgs, _c: ToolContext) -> dict[str, Any]:
-        return {"remembered": True, "id": store.add(a.fact)}
+        mem_id = store.add(a.fact)
+        if on_add:
+            with contextlib.suppress(Exception):
+                await on_add(mem_id, a.fact)
+        return {"remembered": True, "id": mem_id}
 
     async def recall(a: RecallArgs, _c: ToolContext) -> list[dict[str, Any]]:
-        return [{"fact": r["fact"]} for r in store.search(a.query, a.limit)]
+        ids = [r["id"] for r in store.search(a.query, a.limit)]
+        if semantic:
+            with contextlib.suppress(Exception):
+                ids += [i for i in await semantic(a.query, a.limit) if i not in ids]
+        facts = [store.get(i) for i in ids[: a.limit]]
+        return [{"fact": f["fact"]} for f in facts if f]
 
     return [
         Tool(

@@ -39,6 +39,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "services/brain/src/jarvis_brain/providers/router.py" = ["S106"]  # secret *names*, not values
+# Only internal table names and "?" placeholder lists are interpolated; values are always bound.
+"services/brain/src/jarvis_brain/knowledge/*.py" = ["S608"]
 "**/tests/**" = ["S", "B011", "SIM117", "E501", "ASYNC109", "ASYNC110", "RUF059"]
 
 [tool.pytest.ini_options]
