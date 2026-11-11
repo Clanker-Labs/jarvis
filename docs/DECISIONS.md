@@ -388,3 +388,40 @@ vector similarity (threshold 0.35) when an embedder is available; admin edits re
 `docs/ARCHITECTURE.md`: 4 chunks, 46 entities, 39 relations, 5 communities ("Pi-Based Voice Kiosk
 System", …) — ingestion ~80 s, almost all of it graph extraction on spark. Hybrid search without
 re-ranking is well under a second once warm.
+
+## Phase 8 — agent-CLI providers
+
+### Headless CLIs behind the same Provider interface
+`AgentCLIProvider` implements `Provider.run`, so routing, health checks (`<binary> --version`) and
+the admin Test button work the same as for model APIs. Flags were checked against each tool's
+current docs/source (Nov 2026) rather than remembered:
+- **Claude Code** `claude -p <task> --output-format stream-json --verbose --permission-mode acceptEdits
+  --allowedTools <list> --max-budget-usd <n> --no-session-persistence [--model]` — parses
+  `assistant` tool_use blocks for progress and the final `result` (text, `total_cost_usd`, usage).
+- **Codex** `codex exec --json --cd <dir> --sandbox workspace-write --skip-git-repo-check --ephemeral
+  [--model] <task>` — JSONL `item.started/completed` (`command_execution`, `file_change`,
+  `agent_message`), `turn.completed` usage, `turn.failed`/`error`.
+- **Cursor** `agent -p --output-format stream-json --force --trust --workspace <dir> [--model] <task>`
+  with `CURSOR_API_KEY` from secrets — `tool_call` started/completed, `assistant`, `result`.
+
+Each task runs in its own folder under `data/agent-work/` (configurable per provider), in its own
+process group with a minimal environment, a hard timeout (30 min default) and, for Claude Code, a
+dollar budget (`--max-budget-usd`, default $5). All three are **disabled by default** — enable them in
+admin → Providers once the CLIs are installed and logged in on the brain host (in Docker: install them
+in the brain image or run the brain natively for this).
+
+### Background jobs, spoken confirmation, spoken summary
+"Build / code / fix / run…" requests (task route) skip the chat model entirely: Jarvis reads back
+"Just to confirm, I'm about to hand this to Claude Code: …. Shall I go ahead?" (the generic
+irreversible-tool confirmation, via the `delegate_task` tool), and on "yes" starts a background job
+and says "Claude Code is on it. I'll let you know when it's done." — the conversation stays free.
+Progress ("Claude Code is editing app.py", "… is running pytest -q") streams to the kiosk as a chip
+(throttled to one update per 1.5 s); on completion the report is summarised into two spoken sentences
+by the chat model (falling back to its first sentences) and announced with a chime. The model can
+also call `delegate_task` itself (same confirmation), `task_status` and `task_cancel`. Agent CLIs are
+never used as chat models, even if listed in a chat route.
+
+### Admin API follow-ups (from the admin UI work)
+MCP env/header values are masked in `GET/PUT /api/config/mcp` (`${SECRET}` references stay visible;
+saving a masked value keeps the stored one); tool overrides can be removed
+(`DELETE /api/tools/{name}/override`).

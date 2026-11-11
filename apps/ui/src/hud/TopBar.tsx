@@ -1,5 +1,5 @@
 import { Cloud, CloudLightning, CloudRain, CloudSnow, CloudFog, Sun, MicOff } from "lucide-react";
-import { useClock } from "../lib/hooks";
+import { useClock, useTick } from "../lib/hooks";
 import { useUi } from "../lib/store";
 
 const WEATHER_ICONS = { clear: Sun, cloud: Cloud, rain: CloudRain, snow: CloudSnow, storm: CloudLightning, fog: CloudFog };
@@ -22,6 +22,9 @@ export function TopBar() {
   const connected = useUi((s) => s.connected);
   const status = useUi((s) => s.status);
   const weather = useUi((s) => s.weather);
+  const bgTask = useUi((s) => s.bgTask);
+  useTick(1000);
+  const showTask = bgTask && (!bgTask.done || Date.now() - bgTask.at < 8000);
   const Icon = weather ? (WEATHER_ICONS[weather.icon as keyof typeof WEATHER_ICONS] ?? Cloud) : null;
 
   return (
@@ -44,6 +47,12 @@ export function TopBar() {
           <div className="flex items-center gap-2 text-white/70">
             <Icon className="h-5 w-5" strokeWidth={1.25} />
             <span className="text-[22px] font-light tabular-nums">{Math.round(weather.temperature_c)}°</span>
+          </div>
+        )}
+        {showTask && (
+          <div className="glass flex max-w-[360px] items-center gap-2 rounded-full px-3 py-1 text-[12px] text-violet-100/75">
+            <span className={`h-1.5 w-1.5 rounded-full bg-violet-400 ${bgTask.done ? "" : "animate-pulse"}`} />
+            <span className="truncate">{bgTask.message}</span>
           </div>
         )}
         <div className="flex items-center gap-4">

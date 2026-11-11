@@ -13,6 +13,8 @@ export interface UiStore {
   subtitle: { text: string; at: number; done: boolean };
   tool: { label: string; icon: string } | null;
   progress: string | null;
+  /** A background coding-agent job (agent.progress with turn_id "task:…"). */
+  bgTask: { message: string; at: number; done: boolean } | null;
   recent: ConversationEntry[];
   now: NowCard;
   lastInteraction: number;
@@ -42,6 +44,7 @@ export const useUi = create<UiStore>((set, get) => ({
   subtitle: { text: "", at: 0, done: true },
   tool: null,
   progress: null,
+  bgTask: null,
   recent: [],
   now: { next_event_title: null, next_event_start: null, next_event_location: null, unread_important: null },
   lastInteraction: Date.now(),
@@ -104,7 +107,12 @@ export const useUi = create<UiStore>((set, get) => ({
         set({ tool: { label: e.label || e.tool, icon: e.icon } });
         break;
       case "agent.progress":
-        set({ progress: e.message });
+        if (e.turn_id?.startsWith("task:")) {
+          const done = / has (finished|stopped)$/.test(e.message);
+          set({ bgTask: { message: e.message, at: now, done } });
+        } else {
+          set({ progress: e.message });
+        }
         break;
       case "agent.done":
         if (e.text) {

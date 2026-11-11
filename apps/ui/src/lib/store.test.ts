@@ -30,4 +30,13 @@ describe("ui store", () => {
     expect(recent).toHaveLength(3);
     expect(recent[0]).toMatchObject({ user: "q4", assistant: "a4" });
   });
+
+  it("tracks background coding-agent progress separately from the current turn", () => {
+    const s = useUi.getState();
+    s.apply(makeEvent("agent.progress", { provider: "Claude Code", message: "Claude Code is editing app.py", turn_id: "task:ab12" }));
+    expect(useUi.getState().bgTask).toMatchObject({ message: "Claude Code is editing app.py", done: false });
+    expect(useUi.getState().progress).toBeNull();
+    s.apply(makeEvent("agent.progress", { provider: "Claude Code", message: "Claude Code has finished", turn_id: "task:ab12" }));
+    expect(useUi.getState().bgTask?.done).toBe(true);
+  });
 });

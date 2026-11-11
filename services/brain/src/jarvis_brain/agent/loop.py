@@ -7,6 +7,7 @@ in this step (never mid-sentence).
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import AsyncIterator
@@ -157,6 +158,19 @@ class Agent:
 
         run.route = classify(turn.user_text, self.router.cfg)
         run.chain = self.router.chain(run.route)
+        if run.route == "task" and self.tools.get("delegate_task"):
+            cli = next((p for p in run.chain if getattr(p, "cli", None)), None)
+            if cli is not None:
+                # "Go fix/build/run …": no LLM call — straight to a spoken confirmation, then hand off.
+                call = ToolCall(
+                    f"task-{turn.id}", "delegate_task", {"task": turn.user_text, "agent": cli.id}
+                )
+                async for d in self._process_calls([call], run):
+                    if d is not _PAUSED:
+                        yield d
+                self._remember(run)
+                return
+            run.chain = [p for p in run.chain if not getattr(p, "cli", None)]
         if not run.chain:
             turn.provider = "none"
             yield NO_LLM
@@ -179,6 +193,22 @@ class Agent:
 
     async def _resume(self, pending: PendingConfirmation, run: _Run) -> AsyncIterator[str]:
         """The user said yes: run the confirmed call, then let the model continue."""
+        if pending.call.name == "delegate_task" and not pending.provider_id:
+            outcome = await self._run_tool(
+                pending.call, run.turn, run.tool_ctx, run.ctx, confirmed=True
+            )
+            try:
+                agent = json.loads(outcome.content).get("agent", "The coding agent")
+            except (ValueError, AttributeError):
+                agent = "The coding agent"
+            text = (
+                f"{agent} is on it. I'll let you know when it's done."
+                if outcome.ok and '"started": true' in outcome.content
+                else "I couldn't start that task, I'm afraid."
+            )
+            run.reply.append(text)
+            yield text
+            return
         provider = self.router.providers.get(pending.provider_id)
         rest = [p for p in self.router.chain(pending.route) if p.id != pending.provider_id]
         run.chain = ([provider] if provider else []) + rest
@@ -210,6 +240,8 @@ class Agent:
 
     async def _loop(self, run: _Run) -> AsyncIterator[str]:
         turn, ctx = run.turn, run.ctx
+        # Coding-agent CLIs are background workers, never conversation models.
+        run.chain = [p for p in run.chain if not getattr(p, "cli", None)]
         specs = self.tools.specs()
         for _step in range(self.config.agent.max_steps):
             completed: Completed | None = None
@@ -311,12 +343,14 @@ class Agent:
                 _, args = self.tools.validate(call)
                 if isinstance(args, dict):  # invalid args fall through and fail normally
                     question = readback_question(tool.readback(args))
+                    # A task routed straight to a coding agent has no model conversation to resume.
+                    direct = call.name == "delegate_task" and call.id.startswith("task-")
                     self.pending = PendingConfirmation(
                         call=call,
                         readback=question,
                         messages=run.msgs,
                         remaining=calls[i + 1 :],
-                        provider_id=run.chain[0].id if run.chain else "",
+                        provider_id="" if direct or not run.chain else run.chain[0].id,
                         route=run.route,
                         reply_so_far="".join(run.reply),
                     )

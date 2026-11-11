@@ -36,8 +36,13 @@ class ProviderEntry(BaseModel):
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     input_price: float | None = None  # USD per 1M tokens (None = built-in table / free)
     output_price: float | None = None
-    # agent-CLI providers (phase 8)
+    # agent-CLI providers (kind "cli")
     cli: Literal["claude", "codex", "cursor-agent"] | None = None
+    binary: str = ""  # default: claude / codex / agent
+    workdir: str = "data/agent-work"  # each task gets its own sub-folder here
+    timeout_min: int = Field(30, ge=1, le=240)
+    max_budget_usd: float | None = Field(5.0, ge=0)  # Claude Code only
+    allowed_tools: str = "Read Edit Write MultiEdit Glob Grep LS Bash"  # Claude Code only
 
 
 DEFAULT_TOOL_WORDS = [
@@ -129,7 +134,7 @@ class ProvidersConfig(Section):
     routes: dict[str, list[str]] = {
         "chat": ["local", "claude-fast", "claude-strong"],
         "tools": ["claude-strong", "claude-fast", "local"],
-        "task": ["claude-strong"],  # agent CLIs are prepended here in phase 8
+        "task": ["claude-code", "codex", "cursor", "claude-strong"],
     }
     tool_keywords: list[str] = DEFAULT_TOOL_WORDS
     task_keywords: list[str] = DEFAULT_TASK_WORDS

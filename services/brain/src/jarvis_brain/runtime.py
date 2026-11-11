@@ -12,6 +12,7 @@ from typing import Any
 from jarvis_protocol import NodeConfig
 
 from .agent.loop import Agent
+from .agent.tasks import TaskRunner, make_task_tools
 from .bus import EventBus
 from .config import ConfigStore, Section
 from .connectors.base import ConnectorRegistry
@@ -22,6 +23,7 @@ from .knowledge.base import KnowledgeBase
 from .knowledge.tools import make_kb_tools
 from .mcp.manager import MCPManager
 from .orchestrator import Orchestrator, Responder
+from .providers.agent_cli import AgentCLIProvider
 from .providers.router import Router
 from .secrets import SecretStore
 from .settings import Settings
@@ -83,6 +85,8 @@ class Runtime:
         self.speaker = Speaker(self.bus, self.hub, self.tts)
 
         self.router = Router(self.config, self.secrets, settings)
+        self.router.extra_factories["cli"] = self._build_cli
+        self.router.rebuild()
         self.router.on_health.append(lambda ok: self.status.update(llm=ok))
         self.tools = ToolRegistry()
         self.memory = MemoryStore(self.db)
@@ -117,6 +121,9 @@ class Runtime:
             self.secrets,
             self.tools,
         )
+        self.tasks = TaskRunner(self.bus, self._announce_text, self._summarize_report)
+        for tool in make_task_tools(self.tasks, self.router):
+            self.tools.register(tool)
         self.agent = Agent(self.router, self.tools, self.config, self.status)
         self.orchestrator = Orchestrator(
             self.bus,
@@ -142,6 +149,54 @@ class Runtime:
         self.tools.overrides = {
             name: o.model_dump(exclude_none=True) for name, o in cfg.overrides.items()
         }
+
+    def _build_cli(self, e: Any) -> AgentCLIProvider:
+        workdir = Path(e.workdir)
+        if not workdir.is_absolute():
+            workdir = (
+                self.settings.data_dir / workdir.relative_to("data")
+                if workdir.parts[:1] == ("data",)
+                else workdir
+            )
+        env = (
+            (lambda n=e.api_key_secret: {n: self.secrets.get(n)} if self.secrets.get(n) else {})
+            if e.api_key_secret
+            else dict
+        )
+        return AgentCLIProvider(
+            e.id,
+            e.cli or "claude",
+            binary=e.binary,
+            model=e.model,
+            workspace=workdir,
+            timeout_s=e.timeout_min * 60,
+            max_budget_usd=e.max_budget_usd,
+            allowed_tools=e.allowed_tools,
+            env=env,
+        )
+
+    async def _summarize_report(self, report: str) -> str:
+        from .providers.base import Message, ProviderError, TextDelta
+
+        msgs = [
+            Message(
+                "system",
+                "Summarise this coding agent's report for the user in at most two short "
+                "spoken sentences: what was done and anything they must do. Plain text.",
+            ),
+            Message("user", report[:8000]),
+        ]
+        for p in self.router.chain("chat"):
+            try:
+                return "".join(
+                    [ev.text async for ev in p.run(msgs, []) if isinstance(ev, TextDelta)]
+                )
+            except ProviderError:
+                continue
+        raise RuntimeError("no provider for the summary")
+
+    async def _announce_text(self, text: str) -> None:
+        await self._announce(text, {})
 
     async def _announce(self, text: str, _row: dict[str, Any]) -> None:
         if self.hub.node_connected:
@@ -248,6 +303,7 @@ class Runtime:
             self.spawn(self.kb.warm())
 
     async def stop(self) -> None:
+        await self.tasks.stop()
         await self.orchestrator.stop()
         await self.mcp.stop()
         await self.connectors.stop()
