@@ -1,0 +1,16 @@
+[Unit]
+Description=JARVIS brain (orchestrator + admin API) — native, for running the brain on the Pi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO@
+EnvironmentFile=@REPO@/.env
+ExecStart=@UV@ run --frozen --no-dev --package jarvis-brain jarvis-brain
+Restart=always
+RestartSec=3
+MemoryMax=1200M
+
+[Install]
+WantedBy=default.target

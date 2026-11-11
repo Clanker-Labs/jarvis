@@ -1,0 +1,34 @@
+# Brain stack. Ports are published on the Tailscale IP only (set TAILSCALE_IP in .env),
+# never on 0.0.0.0. Run with `make up` from the repo root.
+name: jarvis
+
+services:
+  brain:
+    build:
+      context: ..
+      dockerfile: deploy/docker/brain.Dockerfile
+    env_file: ../.env
+    environment:
+      JARVIS_IN_CONTAINER: "1"
+      BRAIN_HOST: 0.0.0.0
+      ADMIN_HOST: 0.0.0.0
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+    ports:
+      - "${TAILSCALE_IP:-127.0.0.1}:8000:8000"
+      - "${TAILSCALE_IP:-127.0.0.1}:9000:9000"
+    volumes:
+      - jarvis-data:/data
+      - ../skills:/app/skills
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    profiles: ["qdrant"]
+    volumes:
+      - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+    # Internal only: no published ports.
+
+volumes:
+  jarvis-data:
+  qdrant-data:

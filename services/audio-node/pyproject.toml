@@ -1,0 +1,24 @@
+[project]
+name = "jarvis-audio-node"
+version = "0.1.0"
+description = "JARVIS Pi-side audio: mic capture, wake word, VAD, playback, barge-in"
+requires-python = ">=3.12"
+dependencies = [
+  "jarvis-protocol",
+  "websockets>=14",
+  "numpy>=2.0",
+  "pydantic-settings>=2.6",
+]
+
+[project.scripts]
+jarvis-audio-node = "jarvis_audio.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jarvis_audio"]
+
+[tool.uv.sources]
+jarvis-protocol = { workspace = true }

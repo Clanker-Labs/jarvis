@@ -1,0 +1,42 @@
+[project]
+name = "jarvis-workspace"
+version = "0.1.0"
+requires-python = ">=3.12,<3.14"
+description = "JARVIS monorepo (uv workspace root — not a distributable package)"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/protocol", "services/brain", "services/audio-node"]
+
+[tool.uv.sources]
+jarvis-protocol = { workspace = true }
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.8",
+  "mypy>=1.13",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S", "SIM", "RUF"]
+ignore = [
+  "S101",   # assert is fine in tests
+  "RUF001", "RUF002", "RUF003", # unicode punctuation in prose strings is intentional
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "B011", "SIM117"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["packages/protocol/tests", "services/brain/tests", "services/audio-node/tests"]
+addopts = "--import-mode=importlib"

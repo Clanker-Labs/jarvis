@@ -1,0 +1,51 @@
+# Architecture
+
+```
+┌──────────── Raspberry Pi ─────────────┐        ┌──────────── Brain (any tailnet host) ─────────────┐
+│ Chromium kiosk ← ui-server (:8080)     │  WS    │ FastAPI :8000                                      │
+│   /ws/ui ─────────────────────────────────────► │  Orchestrator (state machine, turn lifecycle)      │
+│ audio-node (Python)                    │  WS    │  ├─ STT adapters ── Deepgram / OpenAI / Whisper     │
+│  mic 16 kHz → wake word → VAD ──────────────────►│  ├─ Agent loop ──── provider router                 │
+│  playback ◄── TTS PCM ◄─────────────────────────│  ├─ Tool registry ─ built-ins · MCP · skills        │
+│  barge-in: stop locally, then tell brain│        │  ├─ Knowledge ──── vector + graph RAG, memory       │
+└────────────────────────────────────────┘        │  └─ TTS adapters ── OpenAI / ElevenLabs / Piper     │
+                                                   │ Admin API + admin UI :9000 (password + TOTP)       │
+                                                   └────────────────────────────────────────────────────┘
+```
+
+## Services
+
+| Service | Runs on | Port | Notes |
+|---|---|---|---|
+| `ui-server` | Pi | 127.0.0.1:8080 | static kiosk build + `/config.json` |
+| `audio-node` | Pi | — (client) | connects to `BRAIN_URL/ws/node` |
+| `brain` | Pi (dev) or tailnet host | 8000 | `/health`, `/ws/ui`, `/ws/node` |
+| `admin` | same process as brain | 9000 | separate FastAPI app + separate frontend |
+
+Moving the brain off the Pi: run `make up` on the new host, then on the Pi set
+`BRAIN_URL=ws://<host-tailscale-ip>:8000`, `BRAIN_WS_URL=ws://<host-tailscale-ip>:8000/ws/ui`, and add
+`http://127.0.0.1:8080` to the brain's `UI_ORIGINS` (it is there by default).
+
+## Event flow of one turn
+
+1. Node detects the wake word → `wake.detected` (+ local chime) → brain: `IDLE→WAKE→LISTENING`,
+   sends `node.command listen.open`.
+2. Node streams mic PCM (binary, stream id = capture id) + `listen.level` at ~30 Hz; brain forwards
+   audio to the STT adapter, publishes `listen.partial`.
+3. Silero VAD hears ~700 ms of silence → node sends `listen.end`. Brain finalises STT → `listen.final`
+   → `THINKING`.
+4. Agent streams `agent.token`; a sentence splitter feeds complete sentences to TTS as soon as they
+   exist. First audio → `tts.start` + `SPEAKING`; each sentence → `tts.sentence` (subtitle); PCM
+   goes to the node, which reports `tts.audio_level` from what it actually plays.
+5. Tool calls → `agent.tool_call` (`TOOL` state + chip) → `agent.tool_result`. Irreversible tools
+   pause for a spoken yes/no (`agent.confirm_request`).
+6. Node finishes playback → `playback.done` → brain: `FOLLOW_UP` and `listen.open(timeout=8 s)`.
+   Speech within the window starts a new turn without the wake word; silence → `IDLE`.
+
+Barge-in: wake word or a tap while `SPEAKING` — the node stops playback *immediately* (locally),
+sends `barge_in`; the brain cancels the agent/TTS tasks, and goes to `LISTENING`.
+
+## Protocol
+
+See `packages/protocol`. JSON text frames are events; binary frames are audio
+(`uint32 stream_id` + PCM s16le mono). TypeScript types are generated — `make protocol`.

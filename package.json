@@ -1,0 +1,16 @@
+{
+  "name": "jarvis",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter ./apps/* build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "playwright": "1.65.0"
+  }
+}

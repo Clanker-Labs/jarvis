@@ -1,0 +1,26 @@
+[project]
+name = "jarvis-brain"
+version = "0.1.0"
+description = "JARVIS orchestrator: agent runtime, providers, tools, knowledge, voice adapters, admin API"
+requires-python = ">=3.12"
+dependencies = [
+  "jarvis-protocol",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "httpx>=0.28",
+]
+
+[project.scripts]
+jarvis-brain = "jarvis_brain.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jarvis_brain"]
+
+[tool.uv.sources]
+jarvis-protocol = { workspace = true }

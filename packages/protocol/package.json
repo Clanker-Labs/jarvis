@@ -1,0 +1,15 @@
+{
+  "name": "@jarvis/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./ts/index.ts",
+  "types": "./ts/index.ts",
+  "exports": { ".": "./ts/index.ts" },
+  "scripts": {
+    "gen": "node scripts/gen-ts.mjs"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^15.0.4"
+  }
+}

@@ -1,0 +1,1676 @@
+{
+  "$comment": "protocol=1 mic_sample_rate=16000",
+  "definitions": {
+    "AgentConfirmRequest": {
+      "additionalProperties": false,
+      "description": "An irreversible tool call is waiting for a spoken yes/no.",
+      "properties": {
+        "call_id": {
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "agent.confirm_request",
+          "default": "agent.confirm_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "call_id",
+        "tool",
+        "prompt"
+      ],
+      "title": "AgentConfirmRequest",
+      "type": "object"
+    },
+    "AgentDone": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_usd": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "input_tokens": {
+          "default": 0,
+          "type": "integer"
+        },
+        "interrupted": {
+          "default": false,
+          "type": "boolean"
+        },
+        "model": {
+          "default": "",
+          "type": "string"
+        },
+        "output_tokens": {
+          "default": 0,
+          "type": "integer"
+        },
+        "provider": {
+          "default": "",
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "agent.done",
+          "default": "agent.done",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "text",
+        "provider",
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "cost_usd",
+        "interrupted"
+      ],
+      "title": "AgentDone",
+      "type": "object"
+    },
+    "AgentProgress": {
+      "additionalProperties": false,
+      "description": "Long-running work (agent-CLI providers) reporting progress.",
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "agent.progress",
+          "default": "agent.progress",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "provider",
+        "message"
+      ],
+      "title": "AgentProgress",
+      "type": "object"
+    },
+    "AgentThinking": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "model": {
+          "default": "",
+          "type": "string"
+        },
+        "provider": {
+          "default": "",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "agent.thinking",
+          "default": "agent.thinking",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "provider",
+        "model"
+      ],
+      "title": "AgentThinking",
+      "type": "object"
+    },
+    "AgentToken": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "agent.token",
+          "default": "agent.token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "text"
+      ],
+      "title": "AgentToken",
+      "type": "object"
+    },
+    "AgentToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "call_id": {
+          "type": "string"
+        },
+        "icon": {
+          "default": "tool",
+          "description": "Icon key for the UI chip",
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "description": "Short human label for the UI chip",
+          "type": "string"
+        },
+        "side_effect": {
+          "$ref": "#/definitions/SideEffect",
+          "default": "none"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "agent.tool_call",
+          "default": "agent.tool_call",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "call_id",
+        "tool",
+        "args",
+        "side_effect",
+        "label",
+        "icon"
+      ],
+      "title": "AgentToolCall",
+      "type": "object"
+    },
+    "AgentToolResult": {
+      "additionalProperties": false,
+      "properties": {
+        "call_id": {
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "summary": {
+          "default": "",
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "agent.tool_result",
+          "default": "agent.tool_result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "call_id",
+        "tool",
+        "ok",
+        "summary"
+      ],
+      "title": "AgentToolResult",
+      "type": "object"
+    },
+    "BargeIn": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "source": {
+          "default": "voice",
+          "enum": [
+            "voice",
+            "touch"
+          ],
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "barge_in",
+          "default": "barge_in",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "source"
+      ],
+      "title": "BargeIn",
+      "type": "object"
+    },
+    "ConversationEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "assistant": {
+          "type": "string"
+        },
+        "ts": {
+          "type": "number"
+        },
+        "user": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "user",
+        "assistant",
+        "ts"
+      ],
+      "title": "ConversationEntry",
+      "type": "object"
+    },
+    "ErrorEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "recoverable": {
+          "default": true,
+          "type": "boolean"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "error",
+          "default": "error",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "code",
+        "message",
+        "recoverable"
+      ],
+      "title": "ErrorEvent",
+      "type": "object"
+    },
+    "Hello": {
+      "additionalProperties": false,
+      "description": "First message a client sends after connecting.",
+      "properties": {
+        "client_version": {
+          "default": "0.0.0",
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "protocol": {
+          "default": 1,
+          "type": "integer"
+        },
+        "role": {
+          "enum": [
+            "ui",
+            "audio-node",
+            "admin"
+          ],
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "hello",
+          "default": "hello",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "role",
+        "protocol",
+        "client_version"
+      ],
+      "title": "Hello",
+      "type": "object"
+    },
+    "ListenEnd": {
+      "additionalProperties": false,
+      "description": "Audio node finished capturing an utterance (endpointing decided).",
+      "properties": {
+        "duration_s": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "silence",
+            "max_duration",
+            "timeout",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "listen.end",
+          "default": "listen.end",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "reason",
+        "duration_s"
+      ],
+      "title": "ListenEnd",
+      "type": "object"
+    },
+    "ListenFinal": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "stt_provider": {
+          "default": "",
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "listen.final",
+          "default": "listen.final",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "text",
+        "stt_provider"
+      ],
+      "title": "ListenFinal",
+      "type": "object"
+    },
+    "ListenLevel": {
+      "additionalProperties": false,
+      "description": "Microphone RMS level, 0..1, ~30 Hz while listening.",
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "level": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "listen.level",
+          "default": "listen.level",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "level"
+      ],
+      "title": "ListenLevel",
+      "type": "object"
+    },
+    "ListenPartial": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "listen.partial",
+          "default": "listen.partial",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "text"
+      ],
+      "title": "ListenPartial",
+      "type": "object"
+    },
+    "ListenStart": {
+      "additionalProperties": false,
+      "properties": {
+        "follow_up": {
+          "default": false,
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "listen.start",
+          "default": "listen.start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "follow_up"
+      ],
+      "title": "ListenStart",
+      "type": "object"
+    },
+    "NodeCommand": {
+      "additionalProperties": false,
+      "description": "Brain \u2192 audio node.",
+      "properties": {
+        "command": {
+          "enum": [
+            "listen.open",
+            "listen.cancel",
+            "playback.stop",
+            "chime",
+            "mute",
+            "unmute"
+          ],
+          "type": "string"
+        },
+        "follow_up": {
+          "default": false,
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "timeout_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "listen.open: give up if no speech starts within this window"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "node.command",
+          "default": "node.command",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "command",
+        "timeout_s",
+        "follow_up"
+      ],
+      "title": "NodeCommand",
+      "type": "object"
+    },
+    "NowCard": {
+      "additionalProperties": false,
+      "properties": {
+        "next_event_location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "next_event_start": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unix seconds"
+        },
+        "next_event_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "unread_important": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "next_event_title",
+        "next_event_start",
+        "next_event_location",
+        "unread_important"
+      ],
+      "title": "NowCard",
+      "type": "object"
+    },
+    "PlaybackDone": {
+      "additionalProperties": false,
+      "description": "Audio node finished (or aborted) playing a stream.",
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "interrupted": {
+          "default": false,
+          "type": "boolean"
+        },
+        "stream_id": {
+          "type": "integer"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "playback.done",
+          "default": "playback.done",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "stream_id",
+        "interrupted"
+      ],
+      "title": "PlaybackDone",
+      "type": "object"
+    },
+    "SideEffect": {
+      "enum": [
+        "none",
+        "reversible",
+        "irreversible"
+      ],
+      "title": "SideEffect",
+      "type": "string"
+    },
+    "State": {
+      "enum": [
+        "IDLE",
+        "WAKE",
+        "LISTENING",
+        "THINKING",
+        "TOOL",
+        "SPEAKING",
+        "FOLLOW_UP",
+        "ERROR"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "StateChange": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "previous": {
+          "$ref": "#/definitions/State"
+        },
+        "reason": {
+          "default": "",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/definitions/State"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "state.change",
+          "default": "state.change",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "state",
+        "previous",
+        "reason"
+      ],
+      "title": "StateChange",
+      "type": "object"
+    },
+    "StatusUpdate": {
+      "additionalProperties": false,
+      "description": "Health of the moving parts, shown as connection dots on the UI.",
+      "properties": {
+        "brain": {
+          "default": true,
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "internet": {
+          "default": false,
+          "type": "boolean"
+        },
+        "llm": {
+          "default": false,
+          "type": "boolean"
+        },
+        "mic": {
+          "default": false,
+          "type": "boolean"
+        },
+        "muted": {
+          "default": false,
+          "type": "boolean"
+        },
+        "offline_voice": {
+          "default": false,
+          "description": "STT/TTS fell back to local engines",
+          "type": "boolean"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "status.update",
+          "default": "status.update",
+          "type": "string"
+        },
+        "weather": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Weather"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "brain",
+        "llm",
+        "internet",
+        "mic",
+        "offline_voice",
+        "muted",
+        "weather"
+      ],
+      "title": "StatusUpdate",
+      "type": "object"
+    },
+    "TtsAudioLevel": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "level": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "tts.audio_level",
+          "default": "tts.audio_level",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "level"
+      ],
+      "title": "TtsAudioLevel",
+      "type": "object"
+    },
+    "TtsEnd": {
+      "additionalProperties": false,
+      "description": "Brain finished sending audio for a stream.",
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "interrupted": {
+          "default": false,
+          "type": "boolean"
+        },
+        "stream_id": {
+          "type": "integer"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "tts.end",
+          "default": "tts.end",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "stream_id",
+        "interrupted"
+      ],
+      "title": "TtsEnd",
+      "type": "object"
+    },
+    "TtsSentence": {
+      "additionalProperties": false,
+      "description": "Subtitle for the sentence that is about to be spoken.",
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "stream_id": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "tts.sentence",
+          "default": "tts.sentence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "stream_id",
+        "text"
+      ],
+      "title": "TtsSentence",
+      "type": "object"
+    },
+    "TtsStart": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "provider": {
+          "default": "",
+          "type": "string"
+        },
+        "sample_rate": {
+          "default": 24000,
+          "type": "integer"
+        },
+        "stream_id": {
+          "type": "integer"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "tts.start",
+          "default": "tts.start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "stream_id",
+        "sample_rate",
+        "provider"
+      ],
+      "title": "TtsStart",
+      "type": "object"
+    },
+    "UiCommand": {
+      "additionalProperties": false,
+      "description": "UI \u2192 brain (touch interactions).",
+      "properties": {
+        "command": {
+          "enum": [
+            "push_to_talk",
+            "mute",
+            "unmute",
+            "barge_in",
+            "screen_wake"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "ui.command",
+          "default": "ui.command",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "command"
+      ],
+      "title": "UiCommand",
+      "type": "object"
+    },
+    "UiConfig": {
+      "additionalProperties": false,
+      "description": "Appearance settings pushed to the kiosk UI.",
+      "properties": {
+        "colors": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "State \u2192 #RRGGBB",
+          "type": "object"
+        },
+        "night_dim": {
+          "default": 0.3,
+          "type": "number"
+        },
+        "night_end": {
+          "default": "07:00",
+          "type": "string"
+        },
+        "night_start": {
+          "default": "23:00",
+          "type": "string"
+        },
+        "quality": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "high",
+            "medium",
+            "low"
+          ],
+          "type": "string"
+        },
+        "screen_sleep_min": {
+          "default": 10,
+          "type": "integer"
+        },
+        "show_cards": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "colors",
+        "quality",
+        "night_start",
+        "night_end",
+        "night_dim",
+        "screen_sleep_min",
+        "show_cards"
+      ],
+      "title": "UiConfig",
+      "type": "object"
+    },
+    "UiSnapshot": {
+      "additionalProperties": false,
+      "description": "Everything the UI needs after (re)connecting or when side data changes.",
+      "properties": {
+        "config": {
+          "$ref": "#/definitions/UiConfig"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "now": {
+          "$ref": "#/definitions/NowCard"
+        },
+        "recent": {
+          "items": {
+            "$ref": "#/definitions/ConversationEntry"
+          },
+          "type": "array"
+        },
+        "state": {
+          "$ref": "#/definitions/State"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "ui.snapshot",
+          "default": "ui.snapshot",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "state",
+        "config",
+        "recent",
+        "now"
+      ],
+      "title": "UiSnapshot",
+      "type": "object"
+    },
+    "WakeDetected": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "model": {
+          "default": "",
+          "type": "string"
+        },
+        "score": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "source": {
+          "default": "voice",
+          "enum": [
+            "voice",
+            "touch"
+          ],
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "wake.detected",
+          "default": "wake.detected",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "source",
+        "model",
+        "score"
+      ],
+      "title": "WakeDetected",
+      "type": "object"
+    },
+    "Weather": {
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "icon": {
+          "description": "Short icon key, e.g. 'clear', 'cloud', 'rain', 'snow', 'storm'",
+          "type": "string"
+        },
+        "location": {
+          "default": "",
+          "type": "string"
+        },
+        "temperature_c": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "temperature_c",
+        "condition",
+        "icon",
+        "location"
+      ],
+      "title": "Weather",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "agent.confirm_request": "#/definitions/AgentConfirmRequest",
+      "agent.done": "#/definitions/AgentDone",
+      "agent.progress": "#/definitions/AgentProgress",
+      "agent.thinking": "#/definitions/AgentThinking",
+      "agent.token": "#/definitions/AgentToken",
+      "agent.tool_call": "#/definitions/AgentToolCall",
+      "agent.tool_result": "#/definitions/AgentToolResult",
+      "barge_in": "#/definitions/BargeIn",
+      "error": "#/definitions/ErrorEvent",
+      "hello": "#/definitions/Hello",
+      "listen.end": "#/definitions/ListenEnd",
+      "listen.final": "#/definitions/ListenFinal",
+      "listen.level": "#/definitions/ListenLevel",
+      "listen.partial": "#/definitions/ListenPartial",
+      "listen.start": "#/definitions/ListenStart",
+      "node.command": "#/definitions/NodeCommand",
+      "playback.done": "#/definitions/PlaybackDone",
+      "state.change": "#/definitions/StateChange",
+      "status.update": "#/definitions/StatusUpdate",
+      "tts.audio_level": "#/definitions/TtsAudioLevel",
+      "tts.end": "#/definitions/TtsEnd",
+      "tts.sentence": "#/definitions/TtsSentence",
+      "tts.start": "#/definitions/TtsStart",
+      "ui.command": "#/definitions/UiCommand",
+      "ui.snapshot": "#/definitions/UiSnapshot",
+      "wake.detected": "#/definitions/WakeDetected"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/definitions/Hello"
+    },
+    {
+      "$ref": "#/definitions/StatusUpdate"
+    },
+    {
+      "$ref": "#/definitions/StateChange"
+    },
+    {
+      "$ref": "#/definitions/ErrorEvent"
+    },
+    {
+      "$ref": "#/definitions/WakeDetected"
+    },
+    {
+      "$ref": "#/definitions/ListenStart"
+    },
+    {
+      "$ref": "#/definitions/ListenLevel"
+    },
+    {
+      "$ref": "#/definitions/ListenEnd"
+    },
+    {
+      "$ref": "#/definitions/ListenPartial"
+    },
+    {
+      "$ref": "#/definitions/ListenFinal"
+    },
+    {
+      "$ref": "#/definitions/AgentThinking"
+    },
+    {
+      "$ref": "#/definitions/AgentToolCall"
+    },
+    {
+      "$ref": "#/definitions/AgentToolResult"
+    },
+    {
+      "$ref": "#/definitions/AgentConfirmRequest"
+    },
+    {
+      "$ref": "#/definitions/AgentProgress"
+    },
+    {
+      "$ref": "#/definitions/AgentToken"
+    },
+    {
+      "$ref": "#/definitions/AgentDone"
+    },
+    {
+      "$ref": "#/definitions/TtsStart"
+    },
+    {
+      "$ref": "#/definitions/TtsSentence"
+    },
+    {
+      "$ref": "#/definitions/TtsAudioLevel"
+    },
+    {
+      "$ref": "#/definitions/TtsEnd"
+    },
+    {
+      "$ref": "#/definitions/PlaybackDone"
+    },
+    {
+      "$ref": "#/definitions/BargeIn"
+    },
+    {
+      "$ref": "#/definitions/NodeCommand"
+    },
+    {
+      "$ref": "#/definitions/UiCommand"
+    },
+    {
+      "$ref": "#/definitions/UiSnapshot"
+    }
+  ],
+  "title": "JarvisEvent"
+}

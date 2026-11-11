@@ -1,0 +1,17 @@
+[Unit]
+Description=JARVIS audio node (mic, wake word, VAD, playback)
+After=network-online.target sound.target pipewire.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO@
+EnvironmentFile=@REPO@/.env
+ExecStart=@UV@ run --frozen --no-dev --package jarvis-audio-node jarvis-audio-node
+Restart=always
+RestartSec=2
+# Hard memory ceiling so a leak can never starve the kiosk.
+MemoryMax=400M
+
+[Install]
+WantedBy=default.target
