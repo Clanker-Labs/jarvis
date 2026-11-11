@@ -41,6 +41,32 @@ MIGRATIONS: list[str] = [
       last_seen REAL NOT NULL, ip TEXT
     );
     """,
+    # 4 — notes, timers/reminders, long-term memory
+    """
+    CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT NOT NULL, created REAL NOT NULL);
+    CREATE VIRTUAL TABLE notes_fts USING fts5(text, content='notes', content_rowid='id');
+    CREATE TRIGGER notes_ai AFTER INSERT ON notes BEGIN
+      INSERT INTO notes_fts(rowid, text) VALUES (new.id, new.text); END;
+    CREATE TRIGGER notes_ad AFTER DELETE ON notes BEGIN
+      INSERT INTO notes_fts(notes_fts, rowid, text) VALUES('delete', old.id, old.text); END;
+    CREATE TABLE timers (
+      id INTEGER PRIMARY KEY, kind TEXT NOT NULL, label TEXT NOT NULL, due REAL NOT NULL,
+      created REAL NOT NULL, fired REAL
+    );
+    CREATE INDEX timers_due ON timers(fired, due);
+    CREATE TABLE memories (
+      id INTEGER PRIMARY KEY, fact TEXT NOT NULL, source TEXT, created REAL NOT NULL,
+      updated REAL NOT NULL, embedding BLOB
+    );
+    CREATE VIRTUAL TABLE memories_fts USING fts5(fact, content='memories', content_rowid='id');
+    CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN
+      INSERT INTO memories_fts(rowid, fact) VALUES (new.id, new.fact); END;
+    CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN
+      INSERT INTO memories_fts(memories_fts, rowid, fact) VALUES('delete', old.id, old.fact); END;
+    CREATE TRIGGER memories_au AFTER UPDATE ON memories BEGIN
+      INSERT INTO memories_fts(memories_fts, rowid, fact) VALUES('delete', old.id, old.fact);
+      INSERT INTO memories_fts(rowid, fact) VALUES (new.id, new.fact); END;
+    """,
 ]
 
 

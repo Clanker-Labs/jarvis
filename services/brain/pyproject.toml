@@ -17,6 +17,10 @@ dependencies = [
   "anthropic>=1.0",
   "openai>=1.60",
   "pyotp>=2.9",
+  "mcp>=1.2",
+  "trafilatura>=2.0",
+  "pypdf>=5.0",
+  "jsonschema>=4.23",
 ]
 
 [project.optional-dependencies]

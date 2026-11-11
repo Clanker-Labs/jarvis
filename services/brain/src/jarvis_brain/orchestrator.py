@@ -361,8 +361,28 @@ class Orchestrator:
         )
 
     async def say(self, text: str) -> None:
-        """Speak an out-of-turn announcement (reminders, errors)."""
+        """Speak without touching the conversation state (admin "say", tests)."""
         await self.speaker.speak(one(text), turn_id=None)
+
+    async def announce(self, text: str, *, wait_s: float = 120) -> None:
+        """Proactive announcement (timer done, reminder): wait until Jarvis is free, chime, speak,
+        then open the follow-up window so the user can respond."""
+        deadline = time.time() + wait_s
+        while (self.sm.busy or self.sm.state in (S.LISTENING, S.WAKE)) and time.time() < deadline:  # noqa: ASYNC110 — bounded poll
+            await asyncio.sleep(0.5)
+        await self.hub.to_node(NodeCommand(command="chime"))
+        await asyncio.sleep(0.35)
+        turn = Turn(id=uuid.uuid4().hex[:12], user_text="", provider="announcement")
+        turn.reply = text
+        self.sm.force(S.SPEAKING, "announcement")
+        result = await self.speaker.speak(one(text), turn_id=turn.id)
+        if result.stream_id is not None:
+            self._awaiting_stream = result.stream_id
+            self._playback_done.clear()
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._playback_done.wait(), timeout=result.audio_s + 5)
+            self._awaiting_stream = None
+        await self._follow_up(turn)
 
     async def start(self) -> None:
         pass

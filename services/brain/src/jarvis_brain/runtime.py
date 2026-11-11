@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Coroutine
+from pathlib import Path
 from typing import Any
 
 from jarvis_protocol import NodeConfig
@@ -15,12 +16,20 @@ from .bus import EventBus
 from .config import ConfigStore, Section
 from .db import Database
 from .hub import Hub
+from .mcp.manager import MCPManager
 from .orchestrator import Orchestrator, Responder
 from .providers.router import Router
 from .secrets import SecretStore
 from .settings import Settings
+from .skills_runtime.manager import SkillManager
 from .status import StatusTracker
+from .tools.builtin.files import make_file_tools
+from .tools.builtin.memory import MemoryStore, make_memory_tools
+from .tools.builtin.notes import make_notes_tools
 from .tools.builtin.time_weather import make_time_weather_tools
+from .tools.builtin.timers import Scheduler, make_timer_tools
+from .tools.builtin.web import make_web_tools
+from .tools.config import ToolsConfig
 from .tools.registry import ToolRegistry
 from .traces import TraceStore
 from .voice.speaker import Speaker
@@ -72,8 +81,28 @@ class Runtime:
         self.router = Router(self.config, self.secrets, settings)
         self.router.on_health.append(lambda ok: self.status.update(llm=ok))
         self.tools = ToolRegistry()
-        for tool in make_time_weather_tools(self.config):
+        self.memory = MemoryStore(self.db)
+        self.scheduler = Scheduler(self.db, self._announce)
+        tools_cfg = lambda: self.config.get("tools", ToolsConfig)  # noqa: E731
+        builtin = [
+            *make_time_weather_tools(self.config),
+            *make_notes_tools(self.db),
+            *make_memory_tools(self.memory),
+            *make_timer_tools(self.scheduler),
+            *make_web_tools(self.secrets, tools_cfg),
+            *make_file_tools(lambda: Path(tools_cfg().files_dir)),
+        ]
+        for tool in builtin:
             self.tools.register(tool)
+        self._apply_tool_overrides()
+        self.mcp = MCPManager(self.config, self.secrets, self.tools)
+        self.skills = SkillManager(
+            settings.skills_dir,
+            settings.data_dir / "skill-runs",
+            self.config,
+            self.secrets,
+            self.tools,
+        )
         self.agent = Agent(self.router, self.tools, self.config, self.status)
         self.orchestrator = Orchestrator(
             self.bus,
@@ -94,9 +123,26 @@ class Runtime:
         self.hub.on_node_change.append(self._on_node_change)
         self.config.on_change(self._on_config_change)
 
-    def spawn(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
-        """Fire-and-forget with a strong reference and error logging."""
-        task = asyncio.get_running_loop().create_task(coro)
+    def _apply_tool_overrides(self) -> None:
+        cfg = self.config.get("tools", ToolsConfig)
+        self.tools.overrides = {
+            name: o.model_dump(exclude_none=True) for name, o in cfg.overrides.items()
+        }
+
+    async def _announce(self, text: str, _row: dict[str, Any]) -> None:
+        if self.hub.node_connected:
+            await self.orchestrator.announce(text)
+        else:
+            log.warning("announcement dropped (no audio node): %s", text)
+
+    def spawn(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any] | None:
+        """Fire-and-forget with a strong reference and error logging (no-op outside a loop)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            coro.close()
+            return None
+        task = loop.create_task(coro)
         self._tasks.add(task)
 
         def done(t: asyncio.Task[Any]) -> None:
@@ -136,6 +182,8 @@ class Runtime:
             self.bus.publish(self.orchestrator.snapshot())
         if section == "location":
             self.spawn(self.status.refresh_weather())
+        if section == "tools":
+            self._apply_tool_overrides()
         if section == "voice":
             self.spawn(self.hub.to_node(self.node_config()))
 
@@ -161,6 +209,9 @@ class Runtime:
 
     async def start(self) -> None:
         await self.orchestrator.start()
+        await self.scheduler.start()
+        await self.skills.start()
+        await self.mcp.start()
         if self.settings.background_tasks:
             await self.status.start()
             await self.router.start()
@@ -169,6 +220,9 @@ class Runtime:
 
     async def stop(self) -> None:
         await self.orchestrator.stop()
+        await self.mcp.stop()
+        await self.skills.stop()
+        await self.scheduler.stop()
         await self.router.stop()
         await self.status.stop()
         self.db.close()

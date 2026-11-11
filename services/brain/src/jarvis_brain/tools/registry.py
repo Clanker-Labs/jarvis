@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import jsonschema
 from jarvis_protocol import SideEffect
 from pydantic import BaseModel, ValidationError
 
@@ -144,6 +145,12 @@ class ToolRegistry:
                 return tool, f"Invalid arguments: {e.errors(include_url=False)}"
         if not isinstance(call.args, dict):
             return tool, "Arguments must be an object."
+        try:
+            jsonschema.validate(call.args, tool.json_schema())
+        except jsonschema.ValidationError as e:
+            return tool, f"Invalid arguments: {e.message}"
+        except jsonschema.SchemaError:
+            log.warning("tool %s has an invalid schema; skipping validation", tool.name)
         return tool, call.args
 
     async def execute(self, call: ToolCall, ctx: ToolContext) -> ToolOutcome:

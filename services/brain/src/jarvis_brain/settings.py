@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     )
     ui_dist: Path | None = Field(None, alias="JARVIS_UI_DIST")
     admin_dist: Path = Field(Path("apps/admin/dist"), alias="JARVIS_ADMIN_DIST")
+    skills_dir: Path = Field(Path("skills"), alias="JARVIS_SKILLS_DIR")
 
     # Bootstrap values; can be overridden from admin (DB wins once set there).
     local_llm_base_url: str = Field("", alias="LOCAL_LLM_BASE_URL")

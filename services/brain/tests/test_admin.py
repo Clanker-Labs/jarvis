@@ -1,7 +1,6 @@
 import pyotp
 import pytest
 from fastapi.testclient import TestClient
-
 from jarvis_brain.admin.app import create_admin_app
 from jarvis_brain.admin.auth import hash_password, verify_password
 from jarvis_brain.orchestrator import Turn
@@ -16,6 +15,7 @@ PW = "correct horse battery"
 def rt(tmp_path):
     s = Settings(
         JARVIS_DATA_DIR=tmp_path,
+        JARVIS_SKILLS_DIR=tmp_path / "skills",
         JARVIS_ENV="test",
         JARVIS_BACKGROUND_TASKS=False,
         JARVIS_WARM_LOCAL_VOICE=False,
@@ -36,7 +36,10 @@ def signed_in(client: TestClient) -> pyotp.TOTP:
     assert r.status_code == 200 and r.json()["needs_totp_setup"]
     secret = client.post("/api/auth/totp/setup", headers=H).json()["secret"]
     totp = pyotp.TOTP(secret)
-    assert client.post("/api/auth/totp/enable", json={"code": totp.now()}, headers=H).status_code == 200
+    assert (
+        client.post("/api/auth/totp/enable", json={"code": totp.now()}, headers=H).status_code
+        == 200
+    )
     return totp
 
 
@@ -107,7 +110,9 @@ def test_config_validation_and_yaml_roundtrip(client):
     signed_in(client)
     client.put("/api/secrets/OPENAI_API_KEY", json={"value": "sk-never-exported"}, headers=H)
     assert client.put("/api/config/voice", json={"follow_up_s": 99}, headers=H).status_code == 422
-    assert client.put("/api/config/appearance", json={"quality": "low"}, headers=H).status_code == 200
+    assert (
+        client.put("/api/config/appearance", json={"quality": "low"}, headers=H).status_code == 200
+    )
     exported = client.get("/api/config/export").text
     assert "quality: low" in exported and "sk-never-exported" not in exported
     client.put("/api/config/appearance", json={"quality": "high"}, headers=H)
@@ -119,7 +124,13 @@ def test_config_validation_and_yaml_roundtrip(client):
 def test_turn_traces(client, rt):
     signed_in(client)
     t = Turn(id="abc", user_text="hi", reply="hello", provider="p", model="m")
-    t.timings = {"listen_end": 1.0, "stt_final": 1.3, "first_token": 1.8, "first_audio": 2.1, "done": 3.0}
+    t.timings = {
+        "listen_end": 1.0,
+        "stt_final": 1.3,
+        "first_token": 1.8,
+        "first_audio": 2.1,
+        "done": 3.0,
+    }
     rt.traces.save(t)
     rows = client.get("/api/turns").json()
     assert rows[0]["id"] == "abc" and rows[0]["latency"]["end_of_speech_to_audio"] == 1.1
@@ -132,3 +143,34 @@ def test_security_headers(client):
     r = client.get("/api/auth/state")
     assert r.headers["x-frame-options"] == "DENY"
     assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+
+
+def test_tools_api_overrides_only_raise(client, rt):
+    signed_in(client)
+    tools = {t["name"]: t for t in client.get("/api/tools").json()}
+    assert tools["notes_delete"]["side_effect"] == "irreversible"
+    r = client.put("/api/tools/notes_delete", json={"side_effect": "none"}, headers=H)
+    assert r.json()["side_effect"] == "irreversible"  # can't weaken a confirmation
+    r = client.put("/api/tools/web_search", json={"enabled": False}, headers=H)
+    assert r.json()["enabled"] is False
+    assert all(s.name != "web_search" for s in rt.tools.specs())
+
+
+def test_memory_api(client, rt):
+    signed_in(client)
+    mid = client.post("/api/memory", json={"fact": "Allergic to peanuts"}, headers=H).json()["id"]
+    assert client.get("/api/memory").json()[0]["fact"] == "Allergic to peanuts"
+    client.put(f"/api/memory/{mid}", json={"fact": "Allergic to peanuts and cashews"}, headers=H)
+    assert "cashews" in client.get("/api/memory").json()[0]["fact"]
+    assert client.delete(f"/api/memory/{mid}", headers=H).json()["ok"]
+    assert client.get("/api/memory").json() == []
+
+
+def test_skills_api_write_and_path_safety(client, rt, tmp_path):
+    signed_in(client)
+    md = "---\nname: hello\ndescription: Say hello nicely.\n---\nGreet the user warmly."
+    r = client.put("/api/skills/hello/file?path=SKILL.md", json={"content": md}, headers=H)
+    assert r.status_code == 200 and r.json()[0]["name"] == "hello"
+    assert rt.tools.get("skill_load") is not None
+    r = client.put("/api/skills/hello/file?path=../../evil.txt", json={"content": "x"}, headers=H)
+    assert r.status_code == 400

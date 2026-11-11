@@ -11,6 +11,7 @@ from starlette.websockets import WebSocketDisconnect
 def settings(tmp_path):
     return Settings(
         JARVIS_DATA_DIR=tmp_path,
+        JARVIS_SKILLS_DIR=tmp_path / "skills",
         JARVIS_NODE_TOKEN="t0k",
         JARVIS_ENV="test",
         JARVIS_BACKGROUND_TASKS=False,

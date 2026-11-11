@@ -246,3 +246,62 @@ New protocol events: `node.config` (brain → node: wake threshold, chime, VAD e
 utterance, monitor) sent on connect and whenever the Voice config changes; `wake.score` (node →
 brain while monitoring). Monitor mode streams mic level and the best wake score so the admin page can
 show a live meter and a "test wake" check.
+
+## Phase 5 — tools, MCP, skills, confirmations
+
+### Tool names on the wire
+Anthropic and OpenAI only accept `^[a-zA-Z0-9_-]{1,64}$`, so the spec's `mcp.<server>.<tool>` is
+sent as `mcp__<server>__<tool>` and shown as `mcp.<server>.<tool>` in admin; likewise
+`memory_remember`/`memory_recall`, `skill__<skill>__<script>`.
+
+### Confirmation flow (no exceptions)
+An `irreversible` tool call is never executed in the turn that requested it. The agent stops,
+speaks a read-back built from the tool's `describe(args)` ("Just to confirm, I'm about to delete
+your note 'wifi password…'. Shall I go ahead?"), publishes `agent.confirm_request`, and the follow-up
+window opens. The next utterance is matched against strict yes/no patterns: **yes** executes the call
+and the model continues from the saved, append-only transcript (tool result appended right after its
+own tool call — valid for preserved thinking); **no** replies "Okay, I won't." without an LLM call;
+**anything else** ("actually send it to Bob") drops the pending action and is handled as a new
+request. Pending confirmations expire after 60 s. Admin overrides can only *raise* a tool's
+side-effect level, never lower it; `_run_tool` refuses unconfirmed irreversible calls as a second
+line of defence. Reversible/safe calls in the same step run before the irreversible one.
+
+### Built-in tools
+`get_time`, `weather` (Open-Meteo, no key), `web_search` (Brave → Tavily → SearXNG → DuckDuckGo HTML,
+whichever is configured; DuckDuckGo needs no key), `read_url` (trafilatura/pypdf text extraction),
+`read_file`/`list_files` (one allowed folder, `data/files` by default; txt/md/pdf/docx),
+`notes_add/list/search/delete` (SQLite FTS5), `timer_set`, `reminder_set`, `timers_list`,
+`timer_cancel` (persisted; announced with a chime when due, then a follow-up window),
+`memory_remember`/`memory_recall` (long-term facts, separate from documents). Built-in tools declare
+their side effects in code; connectors and skills declare theirs in `manifest.yaml`.
+
+**SSRF guard**: `read_url` is driven by the model and web pages can carry prompt injections, so it
+refuses loopback, private, link-local, CGNAT/Tailscale and other non-public targets — checked on every
+redirect hop — unless `tools.url_allow_private` is set. (DNS rebinding between check and connect is
+a known residual risk; acceptable for v1.) DOCX parsing disables XML entities.
+
+### MCP client
+Official `mcp` SDK (2.x) high-level `Client`: stdio (command + args + env) and streamable HTTP (URL +
+headers). Each server runs in its own task with backoff reconnects; config changes restart only the
+changed servers; tools register/unregister live. Env and header values support `${SECRET_NAME}`
+references resolved from the encrypted secret store; stdio servers inherit only PATH/HOME/LANG/TZ.
+Default side effect from MCP annotations: `readOnlyHint` → none, `destructiveHint: false` →
+reversible, anything else → **irreversible** (unknown tools need confirmation). Per-tool levels and an
+allow-list are set per server in admin.
+
+### Skills
+`skills/<name>/SKILL.md` (frontmatter: name, description, triggers). Only the catalog (name,
+description, triggers) is in the prompt, inside the `skill_load` tool description; full instructions
+load on demand. Scripts become one tool each so each has its own side-effect level from the skill's
+`manifest.yaml` — undeclared scripts are irreversible. Scripts run with a timeout, a minimal env plus
+the manifest's required secrets, and a private working directory. Hot reload via `watchfiles`; admin
+can upload a zip (zip-slip and size checked), edit files, enable/disable and delete.
+
+### Local model reality check (measured on spark)
+With ~20 tools, `chat:latest` initially *claimed* actions ("Noted.", "Deleted.") without calling the
+tool and invented a morning briefing; `qwen3-next:80b` did the same; `qwen3:8b` called tools
+correctly but took 7–33 s (thinking model). Nothing irreversible ever ran (the confirmation gate
+held). Making the prompt explicit — actions only happen through tools, claiming otherwise is a lie,
+never state what you haven't looked up — fixed `chat:latest`: notes, skill-driven briefing with real
+weather, confirmation read-back with the actual note text, and real deletion, at 0.6–4 s per turn.
+The tools route still prefers Claude when a key is configured.
