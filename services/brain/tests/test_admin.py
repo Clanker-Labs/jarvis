@@ -195,3 +195,32 @@ def test_event_socket_rejects_cross_origin(client):
             "/api/events", headers={"origin": "http://evil.example"}
         ) as ws:
             ws.receive_json()
+
+
+def test_mcp_secrets_masked_and_preserved(client, rt):
+    signed_in(client)
+    srv = {
+        "name": "gh",
+        "transport": "http",
+        "url": "https://example.com/mcp",
+        "enabled": False,
+        "env": {},
+        "headers": {"Authorization": "Bearer raw-token", "X-Key": "${GITHUB_TOKEN}"},
+    }
+    r = client.put("/api/config/mcp", json={"servers": [srv]}, headers=H)
+    assert "raw-token" not in r.text
+    shown = client.get("/api/config/mcp").json()["servers"][0]["headers"]
+    assert shown == {"Authorization": "••••••", "X-Key": "${GITHUB_TOKEN}"}
+    # Saving the masked form back keeps the stored value.
+    edited = {**srv, "headers": shown, "url": "https://example.com/mcp2"}
+    client.put("/api/config/mcp", json={"servers": [edited]}, headers=H)
+    stored = rt.config.get("mcp").servers[0]
+    assert stored.headers["Authorization"] == "Bearer raw-token" and stored.url.endswith("mcp2")
+
+
+def test_tool_override_can_be_cleared(client, rt):
+    signed_in(client)
+    client.put("/api/tools/web_search", json={"enabled": False}, headers=H)
+    assert rt.tools.get("web_search").enabled is False
+    r = client.delete("/api/tools/web_search/override", headers=H)
+    assert r.json()["enabled"] is True and "web_search" not in rt.config.get("tools").overrides

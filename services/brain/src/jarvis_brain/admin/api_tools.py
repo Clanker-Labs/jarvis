@@ -79,6 +79,20 @@ def build_tools_router(rt: Runtime, auth: AdminAuth) -> APIRouter:
             "side_effect": t.side_effect if t else None,
         }
 
+    @api.delete("/tools/{name}/override")
+    async def clear_override(name: str) -> dict[str, Any]:
+        cfg = rt.config.get("tools", ToolsConfig)
+        overrides = {
+            k: v.model_dump(exclude_none=True) for k, v in cfg.overrides.items() if k != name
+        }
+        rt.config.update("tools", {"overrides": overrides})
+        t = rt.tools.get(name)
+        return {
+            "name": name,
+            "enabled": t.enabled if t else None,
+            "side_effect": t.side_effect if t else None,
+        }
+
     # ------------------------------------------------------------------ MCP
 
     @api.get("/mcp")
@@ -168,6 +182,16 @@ def build_tools_router(rt: Runtime, auth: AdminAuth) -> APIRouter:
     @api.delete("/memory/{mem_id}")
     async def delete_memory(mem_id: int) -> dict[str, bool]:
         return {"ok": rt.memory.delete(mem_id)}
+
+    # ------------------------------------------------------------------ coding-agent tasks
+
+    @api.get("/tasks")
+    async def tasks() -> list[dict[str, Any]]:
+        return [j.view() for j in sorted(rt.tasks.jobs.values(), key=lambda j: -j.started)]
+
+    @api.post("/tasks/{job_id}/cancel")
+    async def cancel_task(job_id: str) -> dict[str, bool]:
+        return {"ok": rt.tasks.cancel(job_id)}
 
     # ------------------------------------------------------------------ timers
 

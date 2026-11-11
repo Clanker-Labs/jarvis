@@ -75,6 +75,33 @@ class MonitorBody(BaseModel):
     on: bool
 
 
+MASK = "••••••"
+_REF = re.compile(r"^\$\{[A-Z][A-Z0-9_]*\}$")
+
+
+def mask_mcp(data: dict[str, Any]) -> dict[str, Any]:
+    """Hide literal env/header values (``${SECRET}`` references stay visible)."""
+    for srv in data.get("servers", []):
+        for key in ("env", "headers"):
+            srv[key] = {
+                k: v if _REF.match(str(v)) else MASK for k, v in (srv.get(key) or {}).items()
+            }
+    return data
+
+
+def unmask_mcp(patch: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    """On save, a masked value means "keep what's stored"."""
+    old = {s["name"]: s for s in current.get("servers", [])}
+    for srv in patch.get("servers", []) or []:
+        prev = old.get(srv.get("name"), {})
+        for key in ("env", "headers"):
+            vals = srv.get(key) or {}
+            srv[key] = {
+                k: (prev.get(key, {}).get(k, "") if v == MASK else v) for k, v in vals.items()
+            }
+    return patch
+
+
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "?"
 
@@ -202,14 +229,18 @@ def build_router(rt: Runtime, auth: AdminAuth) -> APIRouter:
     async def get_section(section: str) -> dict[str, Any]:
         if section not in SECTIONS:
             raise HTTPException(404, "Unknown section.")
-        return rt.config.get(section).model_dump(mode="json")
+        data = rt.config.get(section).model_dump(mode="json")
+        return mask_mcp(data) if section == "mcp" else data
 
     @api.put("/config/{section}", dependencies=[guard])
     async def put_section(section: str, patch: dict[str, Any]) -> dict[str, Any]:
         if section not in SECTIONS:
             raise HTTPException(404, "Unknown section.")
+        if section == "mcp":
+            patch = unmask_mcp(patch, rt.config.get("mcp").model_dump(mode="json"))
         try:
-            return rt.config.update(section, patch).model_dump(mode="json")
+            data = rt.config.update(section, patch).model_dump(mode="json")
+            return mask_mcp(data) if section == "mcp" else data
         except ValidationError as e:
             raise HTTPException(422, e.errors(include_url=False)) from e
 
