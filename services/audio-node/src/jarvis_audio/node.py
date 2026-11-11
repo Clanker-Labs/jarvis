@@ -280,9 +280,13 @@ class AudioNode:
         while not self._stopping:
             try:
                 async with websockets.connect(
-                    self.s.ws_url, additional_headers=headers, max_size=4 * 1024 * 1024,
-                    ping_interval=10, ping_timeout=10, open_timeout=5,
-                ) as ws:  # fmt: skip
+                    self.s.ws_url,
+                    additional_headers=headers,
+                    max_size=4 * 1024 * 1024,
+                    ping_interval=10,
+                    ping_timeout=10,
+                    open_timeout=5,
+                ) as ws:
                     self.ws = ws
                     while not self._send_q.empty():  # nothing stale from a previous session
                         self._send_q.get_nowait()

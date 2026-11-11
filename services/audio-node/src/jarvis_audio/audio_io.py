@@ -53,10 +53,22 @@ class AlsaMic:
         if not exe:
             raise RuntimeError("arecord not found — install alsa-utils")
         self._proc = await asyncio.create_subprocess_exec(
-            exe, "-q", "-D", self.device, "-f", "S16_LE", "-r", str(SAMPLE_RATE), "-c", "1",
-            "-t", "raw", "--buffer-time=200000",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )  # fmt: skip
+            exe,
+            "-q",
+            "-D",
+            self.device,
+            "-f",
+            "S16_LE",
+            "-r",
+            str(SAMPLE_RATE),
+            "-c",
+            "1",
+            "-t",
+            "raw",
+            "--buffer-time=200000",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
         assert self._proc.stdout
         try:
             while True:
@@ -180,10 +192,22 @@ class Player:
             if not exe:
                 raise RuntimeError("aplay not found — install alsa-utils")
             self._proc = await asyncio.create_subprocess_exec(
-                exe, "-q", "-D", self.device, "-f", "S16_LE", "-r", str(rate), "-c", "1",
-                "-t", "raw", "--buffer-time=100000",
-                stdin=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-            )  # fmt: skip
+                exe,
+                "-q",
+                "-D",
+                self.device,
+                "-f",
+                "S16_LE",
+                "-r",
+                str(rate),
+                "-c",
+                "1",
+                "-t",
+                "raw",
+                "--buffer-time=100000",
+                stdin=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
         level_step = int(rate / 30) * 2  # ~30 Hz level updates, in bytes
         t0: float | None = None
         written_s = 0.0

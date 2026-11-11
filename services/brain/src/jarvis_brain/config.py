@@ -84,8 +84,7 @@ class AgentConfig(Section):
     max_steps: int = Field(8, ge=1, le=32)
     history_turns: int = Field(12, ge=2, le=100)
     user_name: str = ""
-    # Phase 2 fallback: with no LLM configured, speak back what was heard.
-    echo_when_no_llm: bool = True
+    session_timeout_min: int = Field(30, ge=1, le=24 * 60)
 
 
 SECTIONS: dict[str, type[Section]] = {

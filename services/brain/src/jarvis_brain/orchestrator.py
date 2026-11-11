@@ -61,6 +61,11 @@ class Turn:
     reply: str = ""
     provider: str = ""
     model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    tool_calls: list[dict] = field(default_factory=list)
+    error: str = ""
 
     def mark(self, name: str) -> None:
         self.timings.setdefault(name, time.time())
@@ -137,13 +142,17 @@ class Orchestrator:
         return UiSnapshot(
             state=self.sm.state,
             config=UiConfig(
-                colors=a.colors, quality=a.quality, night_start=a.night_start,
-                night_end=a.night_end, night_dim=a.night_dim,
-                screen_sleep_min=a.screen_sleep_min, show_cards=a.show_cards,
+                colors=a.colors,
+                quality=a.quality,
+                night_start=a.night_start,
+                night_end=a.night_end,
+                night_dim=a.night_dim,
+                screen_sleep_min=a.screen_sleep_min,
+                show_cards=a.show_cards,
             ),
             recent=self.status.recent,
             now=self.status.now,
-        )  # fmt: skip
+        )
 
     # ------------------------------------------------------------------ node input
 
@@ -314,12 +323,20 @@ class Orchestrator:
         if "done" in turn.timings:
             return
         turn.mark("done")
+        if error:
+            turn.error = error
         self.bus.publish(
             AgentDone(
-                text=turn.reply, provider=turn.provider, model=turn.model,
-                interrupted=interrupted, turn_id=turn.id,
+                text=turn.reply,
+                provider=turn.provider,
+                model=turn.model,
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
+                cost_usd=round(turn.cost_usd, 6),
+                interrupted=interrupted,
+                turn_id=turn.id,
             )
-        )  # fmt: skip
+        )
         if turn.user_text and turn.reply and not interrupted:
             self.status.add_recent(turn.user_text, turn.reply)
         for cb in self.on_turn_done:

@@ -145,3 +145,72 @@ announcing `listen.start`, so silence in the window never produces an empty turn
   reads `.env` today; a `node.config` push arrives with the admin panel (phase 4).
 - Docker images could not be built on the dev Pi (no Docker daemon, no sudo); the compose file is
   validated with `docker compose config`, and CI builds the images.
+
+## Phase 3 — conversation
+
+### Provider interface and the agent loop
+`Provider.run(messages, tools, *, stream) -> AsyncIterator[AgentEvent]` (text deltas, tool-call
+requests, progress, completion with usage/cost). Messages use a neutral format; assistant turns can
+carry provider-native `raw` content that is replayed only to the provider that produced it. The
+agent loop is ~150 lines over that interface — no framework. Max 8 steps (admin-configurable).
+Failover to the next provider happens only if the current one fails **before saying anything** in
+that step; once words are spoken we never restart mid-reply.
+
+### Anthropic provider
+Official `anthropic` SDK (async, `client.beta.messages.stream`), adaptive thinking (the default on
+current models) with `output_config.effort` (`low` for the fast tier, `medium` for the strong tier).
+No sampling parameters, no prefill (both rejected by current models). Tools stream their inputs
+eagerly (`eager_input_streaming`); every input is re-validated by the tool registry before running.
+Refusals (`stop_reason: "refusal"`) are spoken as a one-line decline; truncated tool calls are never
+executed. **Server-side refusal fallback** (`fallbacks: "default"`, beta
+`server-side-fallback-2026-07-01`) is on for models that support it (Opus 5.5) — turn it off by
+pointing the strong tier at a model without it.
+
+Prompt-cache/preserved-thinking hygiene: the persona system prompt and the tool set are frozen per
+process; per-turn context (time, location, weather, summary) is an appended `role: "system"` message
+after the user turn (models without mid-conversation system messages get it folded into the user
+turn). Within a turn the history is append-only with thinking blocks replayed verbatim; across turns
+history is stored as plain text, i.e. all earlier thinking blocks are dropped — which the API allows.
+
+### Model tiers
+Spec: "default conversation → fast model; tools/reasoning → stronger API model". Defaults:
+`claude-fast` = **Claude Haiku 5.5** (`effort: low`) and `claude-strong` = **Claude Opus 5.5**
+(`effort: medium`), both editable in admin. Chat route: `local → claude-fast → claude-strong`;
+tools route: `claude-strong → claude-fast → local`; task route: agent CLIs (phase 8) then
+`claude-strong`. Routing is a keyword classifier (word-boundary matches, lists editable in admin) —
+no extra LLM call on the latency path. Note every route still exposes all tools; routing only picks
+the model.
+
+### Local / OpenAI-compatible provider
+Official `openai` SDK against any OpenAI-compatible base URL (OpenAI, OpenRouter, the tailnet LLM).
+`tool_mode`: `native`, `json` (tools described in the prompt; the model answers with exactly one
+`{"tool", "arguments"}` object; strict parse; one corrective retry; never spoken), or `auto` (native,
+switching to json permanently if the server rejects `tools`). `<think>…</think>` sections from
+reasoning models are filtered out of the spoken stream. Servers that reject
+`stream_options.include_usage` are retried without it.
+
+Found on the tailnet: `spark` (100.115.124.66:8000, nginx in front of an Ollama-style server).
+Measured from the Pi: `chat:latest` 0.6 s to first token warm (2.1 s after a prompt change, i.e. cold
+prefix cache), native tool calls correct; `fast:latest` 7.7 s cold. `.env` points
+`LOCAL_LLM_BASE_URL`/`LOCAL_LLM_MODEL` at `spark` / `chat:latest` — confirm or change.
+
+### Health, fallback, "says so"
+Every provider is health-checked every 30 s (`/models` for OpenAI-compatible servers,
+`models.retrieve` for Anthropic — no tokens spent). Chains are ordered known-healthy → unknown →
+known-unhealthy. A runtime failure marks the provider unhealthy immediately. When the turn ends up on
+a local provider because the preferred one is down, Jarvis prefixes the reply once per degraded
+period: "I'm running on the local model for now". Each call logs provider, model, route, time to
+first token, total time, tokens and cost.
+
+### Short-term memory
+Rolling window of the last 12 exchanges as plain text; when it overflows, the oldest half is
+summarised in the background by the chat route (never on the latency path) and the summary rides in
+the per-turn context note. After 30 minutes of silence the conversation starts fresh.
+
+### Measured (Pi 4, offline path: local Whisper → spark `chat:latest` → Piper)
+"Hey Jarvis… what time is it?" → "It's twenty past one in the morning." End of speech → first audio
+5.8–6.7 s, of which ~3 s is faster-whisper `tiny.en` on the Pi CPU and ~2 s a cold LLM prefix. The
+< 1.5 s target needs streaming cloud STT (Deepgram finalises in ~0.3 s) or a GPU Whisper; spark has no
+`/v1/audio/transcriptions` endpoint today. Running
+[speaches](https://github.com/speaches-ai/speaches) (faster-whisper, OpenAI-compatible) on spark and
+setting Voice → `whisper_remote_url` would make the offline path fast too.

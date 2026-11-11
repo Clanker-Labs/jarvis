@@ -6,9 +6,32 @@ import re
 
 # Abbreviations whose trailing period does not end a sentence.
 _ABBREV = {
-    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc", "e.g", "i.e", "approx",
-    "no", "fig", "inc", "ltd", "co", "mt", "ft", "km", "min", "max", "a.m", "p.m",
-}  # fmt: skip
+    "mr",
+    "mrs",
+    "ms",
+    "dr",
+    "prof",
+    "sr",
+    "jr",
+    "st",
+    "vs",
+    "etc",
+    "e.g",
+    "i.e",
+    "approx",
+    "no",
+    "fig",
+    "inc",
+    "ltd",
+    "co",
+    "mt",
+    "ft",
+    "km",
+    "min",
+    "max",
+    "a.m",
+    "p.m",
+}
 _END = re.compile(r"([.!?…]+)([\"')\]]*)(\s+)")
 _MIN_FIRST = 12  # don't send a tiny first fragment ("Right.") on its own unless it's all there is
 

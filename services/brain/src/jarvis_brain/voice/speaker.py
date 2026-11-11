@@ -76,8 +76,9 @@ class Speaker:
                 if sid is None:
                     sid, rate = self._new_stream(), utt.sample_rate
                     self.current = sid
-                    start = TtsStart(stream_id=sid, sample_rate=rate, provider=utt.engine,
-                                     turn_id=turn_id)  # fmt: skip
+                    start = TtsStart(
+                        stream_id=sid, sample_rate=rate, provider=utt.engine, turn_id=turn_id
+                    )
                     await self.hub.to_node(start)
                     self.bus.publish(start)
                 self.bus.publish(TtsSentence(stream_id=sid, text=text, turn_id=turn_id))

@@ -43,14 +43,20 @@ async def run(wav: Path, play: bool, limit_s: float) -> int:
     port = _free_port()
     token = "demo-token"  # noqa: S105 — throwaway, localhost only
     bs = Settings(
-        BRAIN_HOST="127.0.0.1", BRAIN_PORT=port, JARVIS_NODE_TOKEN=token,
-        JARVIS_BACKGROUND_TASKS=False, JARVIS_WARM_LOCAL_VOICE=False,
-    )  # type: ignore[call-arg]  # fmt: skip
+        BRAIN_HOST="127.0.0.1",
+        BRAIN_PORT=port,
+        JARVIS_NODE_TOKEN=token,
+        JARVIS_BACKGROUND_TASKS=False,
+        JARVIS_WARM_LOCAL_VOICE=False,
+    )  # type: ignore[call-arg]
     runtime = Runtime(bs)
     print("… loading voice engines")
     await runtime.warm_local_voice()  # realistic latencies: a running brain has these warm
-    server = uvicorn.Server(uvicorn.Config(create_app(runtime), host="127.0.0.1", port=port,
-                                           log_level="warning", log_config=None))  # fmt: skip
+    server = uvicorn.Server(
+        uvicorn.Config(
+            create_app(runtime), host="127.0.0.1", port=port, log_level="warning", log_config=None
+        )
+    )
     server_task = asyncio.create_task(server.serve())
     while not server.started:  # noqa: ASYNC110 — uvicorn exposes no startup event
         await asyncio.sleep(0.05)
@@ -144,9 +150,11 @@ def main() -> None:
     ap.add_argument("--timeout", type=float, default=60)
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
-    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
-                        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-                        datefmt="%H:%M:%S")  # fmt: skip
+    logging.basicConfig(
+        level=logging.INFO if args.verbose else logging.WARNING,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
     raise SystemExit(asyncio.run(run(args.wav, args.play, args.timeout)))
 
 

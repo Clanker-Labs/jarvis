@@ -5,14 +5,18 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from .agent.loop import Agent
 from .bus import EventBus
 from .config import ConfigStore, Section
 from .db import Database
 from .hub import Hub
-from .orchestrator import EchoResponder, Orchestrator, Responder
+from .orchestrator import Orchestrator, Responder
+from .providers.router import Router
 from .secrets import SecretStore
 from .settings import Settings
 from .status import StatusTracker
+from .tools.builtin.time_weather import make_time_weather_tools
+from .tools.registry import ToolRegistry
 from .voice.speaker import Speaker
 from .voice.stt import DeepgramSTT, LocalWhisperSTT, OpenAICompatSTT, STTChain, STTEngine
 from .voice.tts import ElevenLabsTTS, OpenAITTS, PiperTTS, TTSChain, TTSEngine
@@ -58,10 +62,22 @@ class Runtime:
         self.stt = STTChain(self.stt_engines, voice)
         self.tts = TTSChain(self.tts_engines, voice)
         self.speaker = Speaker(self.bus, self.hub, self.tts)
+
+        self.router = Router(self.config, self.secrets, settings)
+        self.router.on_health.append(lambda ok: self.status.update(llm=ok))
+        self.tools = ToolRegistry()
+        for tool in make_time_weather_tools(self.config):
+            self.tools.register(tool)
+        self.agent = Agent(self.router, self.tools, self.config, self.status)
         self.orchestrator = Orchestrator(
-            self.bus, self.hub, self.config, self.stt, self.speaker,
-            responder or EchoResponder(), self.status,
-        )  # fmt: skip
+            self.bus,
+            self.hub,
+            self.config,
+            self.stt,
+            self.speaker,
+            responder or self.agent,
+            self.status,
+        )
         self.hub.on_node_change.append(self._on_node_change)
         self.config.on_change(self._on_config_change)
 
@@ -78,6 +94,7 @@ class Runtime:
         return {
             "stt": [e.id for e in self.stt.active()],
             "tts": [e.id for e in self.tts.active()],
+            "providers": {pid: self.router.health.get(pid) for pid in self.router.providers},
             **{k: v for k, v in self.status.flags.items() if k != "brain"},
         }
 
@@ -97,10 +114,12 @@ class Runtime:
         await self.orchestrator.start()
         if self.settings.background_tasks:
             await self.status.start()
+            await self.router.start()
         if self.settings.warm_local_voice:
             self._warm_task = asyncio.create_task(self.warm_local_voice())
 
     async def stop(self) -> None:
         await self.orchestrator.stop()
+        await self.router.stop()
         await self.status.stop()
         self.db.close()

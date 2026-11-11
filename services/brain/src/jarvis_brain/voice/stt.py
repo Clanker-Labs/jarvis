@@ -133,11 +133,19 @@ class DeepgramSTT:
 
     async def open_stream(self, on_partial: PartialCb) -> StreamSession:
         c = self.cfg()
-        q = urlencode({
-            "model": c.deepgram_model, "language": c.language, "encoding": "linear16",
-            "sample_rate": RATE, "channels": 1, "interim_results": "true",
-            "punctuate": "true", "smart_format": "true", "endpointing": "false",
-        })  # fmt: skip
+        q = urlencode(
+            {
+                "model": c.deepgram_model,
+                "language": c.language,
+                "encoding": "linear16",
+                "sample_rate": RATE,
+                "channels": 1,
+                "interim_results": "true",
+                "punctuate": "true",
+                "smart_format": "true",
+                "endpointing": "false",
+            }
+        )
         ws = await websockets.connect(
             f"wss://api.deepgram.com/v1/listen?{q}",
             additional_headers={"Authorization": f"Token {self.secrets.get('DEEPGRAM_API_KEY')}"},

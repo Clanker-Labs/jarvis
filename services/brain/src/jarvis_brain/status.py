@@ -44,9 +44,13 @@ class StatusTracker:
         self.bus = bus
         self.config = config
         self.flags: dict[str, bool] = {
-            "brain": True, "llm": False, "internet": False, "mic": False,
-            "offline_voice": False, "muted": False,
-        }  # fmt: skip
+            "brain": True,
+            "llm": False,
+            "internet": False,
+            "mic": False,
+            "offline_voice": False,
+            "muted": False,
+        }
         self.weather: Weather | None = None
         self.weather_raw: dict[str, Any] = {}
         self.recent: list[ConversationEntry] = []
@@ -77,8 +81,10 @@ class StatusTracker:
         self.update(offline_voice=self._stt_fb or self._tts_fb)
 
     def add_recent(self, user: str, assistant: str) -> None:
-        self.recent = [ConversationEntry(user=user, assistant=assistant, ts=time.time()),
-                       *self.recent][:3]  # fmt: skip
+        self.recent = [
+            ConversationEntry(user=user, assistant=assistant, ts=time.time()),
+            *self.recent,
+        ][:3]
 
     def set_now(self, now: NowCard) -> None:
         self.now = now

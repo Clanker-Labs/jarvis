@@ -33,10 +33,12 @@ select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S", "SIM", "RUF"]
 ignore = [
   "S101",   # assert is fine in tests
   "RUF001", "RUF002", "RUF003", # unicode punctuation in prose strings is intentional
+  "RUF012",  # pydantic models copy mutable defaults
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S", "B011", "SIM117", "ASYNC109", "ASYNC110", "RUF059"]
+"services/brain/src/jarvis_brain/providers/router.py" = ["S106"]  # secret *names*, not values
+"**/tests/**" = ["S", "B011", "SIM117", "E501", "ASYNC109", "ASYNC110", "RUF059"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
