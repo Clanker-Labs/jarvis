@@ -861,6 +861,76 @@
       "title": "NodeCommand",
       "type": "object"
     },
+    "NodeConfig": {
+      "additionalProperties": false,
+      "description": "Brain \u2192 audio node: live-tunable voice settings (from the admin Voice page).",
+      "properties": {
+        "chime": {
+          "default": true,
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "max_utterance_s": {
+          "default": 30.0,
+          "maximum": 120,
+          "minimum": 3,
+          "type": "number"
+        },
+        "monitor": {
+          "default": false,
+          "type": "boolean"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "node.config",
+          "default": "node.config",
+          "type": "string"
+        },
+        "vad_end_silence_ms": {
+          "default": 700,
+          "maximum": 3000,
+          "minimum": 200,
+          "type": "integer"
+        },
+        "wake_threshold": {
+          "default": 0.5,
+          "maximum": 0.99,
+          "minimum": 0.05,
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "wake_threshold",
+        "chime",
+        "vad_end_silence_ms",
+        "max_utterance_s",
+        "monitor"
+      ],
+      "title": "NodeConfig",
+      "type": "object"
+    },
     "NowCard": {
       "additionalProperties": false,
       "properties": {
@@ -1533,6 +1603,51 @@
       "title": "WakeDetected",
       "type": "object"
     },
+    "WakeScore": {
+      "additionalProperties": false,
+      "description": "Audio node \u2192 brain while monitoring: best wake-word score of the last ~0.5 s.",
+      "properties": {
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "wake.score",
+          "default": "wake.score",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "score"
+      ],
+      "title": "WakeScore",
+      "type": "object"
+    },
     "Weather": {
       "additionalProperties": false,
       "properties": {
@@ -1579,6 +1694,7 @@
       "listen.partial": "#/definitions/ListenPartial",
       "listen.start": "#/definitions/ListenStart",
       "node.command": "#/definitions/NodeCommand",
+      "node.config": "#/definitions/NodeConfig",
       "playback.done": "#/definitions/PlaybackDone",
       "state.change": "#/definitions/StateChange",
       "status.update": "#/definitions/StatusUpdate",
@@ -1588,7 +1704,8 @@
       "tts.start": "#/definitions/TtsStart",
       "ui.command": "#/definitions/UiCommand",
       "ui.snapshot": "#/definitions/UiSnapshot",
-      "wake.detected": "#/definitions/WakeDetected"
+      "wake.detected": "#/definitions/WakeDetected",
+      "wake.score": "#/definitions/WakeScore"
     },
     "propertyName": "type"
   },
@@ -1664,6 +1781,12 @@
     },
     {
       "$ref": "#/definitions/NodeCommand"
+    },
+    {
+      "$ref": "#/definitions/NodeConfig"
+    },
+    {
+      "$ref": "#/definitions/WakeScore"
     },
     {
       "$ref": "#/definitions/UiCommand"

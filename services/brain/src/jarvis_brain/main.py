@@ -7,6 +7,7 @@ import logging
 
 import uvicorn
 
+from .admin.app import create_admin_app
 from .app import create_app
 from .logging_setup import setup_logging
 from .runtime import Runtime
@@ -32,8 +33,24 @@ async def serve() -> None:
             proxy_headers=False,
         )
     )
-    log.info("brain listening on %s:%s", settings.brain_host, settings.brain_port)
-    await brain.serve()
+    admin = uvicorn.Server(
+        uvicorn.Config(
+            create_admin_app(runtime),
+            host=settings.admin_host,
+            port=settings.admin_port,
+            log_config=None,
+            proxy_headers=False,
+            lifespan="off",  # the runtime's lifecycle belongs to the brain app
+        )
+    )
+    log.info(
+        "brain on %s:%s, admin on %s:%s",
+        settings.brain_host,
+        settings.brain_port,
+        settings.admin_host,
+        settings.admin_port,
+    )
+    await asyncio.gather(brain.serve(), admin.serve())
 
 
 def main() -> None:

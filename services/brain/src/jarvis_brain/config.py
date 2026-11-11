@@ -49,6 +49,8 @@ class VoiceConfig(Section):
     piper_voice: str = "en_GB-alan-medium"
 
     follow_up_s: float = Field(8.0, ge=0, le=30)
+    vad_end_silence_ms: int = Field(700, ge=200, le=3000)
+    max_utterance_s: float = Field(30.0, ge=3, le=120)
     chime: bool = True
     wake_threshold: float = Field(0.5, ge=0.05, le=0.99)
 

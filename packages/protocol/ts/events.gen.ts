@@ -26,6 +26,8 @@ export type JarvisEvent =
   | PlaybackDone
   | BargeIn
   | NodeCommand
+  | NodeConfig
+  | WakeScore
   | UiCommand
   | UiSnapshot;
 export type State =
@@ -509,6 +511,48 @@ export interface NodeCommand {
    */
   turn_id: string | null;
   type: "node.command";
+}
+/**
+ * Brain → audio node: live-tunable voice settings (from the admin Voice page).
+ */
+export interface NodeConfig {
+  chime: boolean;
+  /**
+   * Unique event id
+   */
+  id: string;
+  max_utterance_s: number;
+  monitor: boolean;
+  /**
+   * Unix time (seconds) at creation
+   */
+  ts: number;
+  /**
+   * Conversation turn this event belongs to
+   */
+  turn_id: string | null;
+  type: "node.config";
+  vad_end_silence_ms: number;
+  wake_threshold: number;
+}
+/**
+ * Audio node → brain while monitoring: best wake-word score of the last ~0.5 s.
+ */
+export interface WakeScore {
+  /**
+   * Unique event id
+   */
+  id: string;
+  score: number;
+  /**
+   * Unix time (seconds) at creation
+   */
+  ts: number;
+  /**
+   * Conversation turn this event belongs to
+   */
+  turn_id: string | null;
+  type: "wake.score";
 }
 /**
  * UI → brain (touch interactions).

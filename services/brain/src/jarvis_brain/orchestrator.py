@@ -117,6 +117,7 @@ class Orchestrator:
         self._playback_done: asyncio.Event = asyncio.Event()
         self._awaiting_stream: int | None = None
         self._error_timer: asyncio.TimerHandle | None = None
+        self._wake_at: float | None = None
         self.on_turn_done: list[Callable[[Turn], None]] = []
 
     # ------------------------------------------------------------------ state
@@ -159,6 +160,7 @@ class Orchestrator:
     async def on_node_event(self, ev: Event) -> None:
         match ev:
             case WakeDetected():
+                self._wake_at = time.time()
                 self.bus.publish(ev)
                 if self.sm.busy:
                     await self._interrupt("wake word")
@@ -190,6 +192,9 @@ class Orchestrator:
         if self.capture:
             await self.capture.aclose()
         self.turn = Turn(id=uuid.uuid4().hex[:12], follow_up=ev.follow_up)
+        if self._wake_at and time.time() - self._wake_at < 3:
+            self.turn.timings["wake"] = self._wake_at
+        self._wake_at = None
         self.turn.mark("listen_start")
         self.capture_id = ev.turn_id
         turn_id = self.turn.id

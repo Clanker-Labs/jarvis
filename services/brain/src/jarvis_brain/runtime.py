@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from collections.abc import Coroutine
+from typing import Any
+
+from jarvis_protocol import NodeConfig
 
 from .agent.loop import Agent
 from .bus import EventBus
@@ -17,6 +22,7 @@ from .settings import Settings
 from .status import StatusTracker
 from .tools.builtin.time_weather import make_time_weather_tools
 from .tools.registry import ToolRegistry
+from .traces import TraceStore
 from .voice.speaker import Speaker
 from .voice.stt import DeepgramSTT, LocalWhisperSTT, OpenAICompatSTT, STTChain, STTEngine
 from .voice.tts import ElevenLabsTTS, OpenAITTS, PiperTTS, TTSChain, TTSEngine
@@ -78,17 +84,60 @@ class Runtime:
             responder or self.agent,
             self.status,
         )
+        self.traces = TraceStore(self.db)
+        self.bus.tap(self.traces.tap)
+        self.orchestrator.on_turn_done.append(self.traces.save)
+        self.started_at = time.time()
+        self.monitor = False
+        self.admin_auth: Any = None
+        self._tasks: set[asyncio.Task[Any]] = set()
         self.hub.on_node_change.append(self._on_node_change)
         self.config.on_change(self._on_config_change)
 
+    def spawn(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
+        """Fire-and-forget with a strong reference and error logging."""
+        task = asyncio.get_running_loop().create_task(coro)
+        self._tasks.add(task)
+
+        def done(t: asyncio.Task[Any]) -> None:
+            self._tasks.discard(t)
+            if not t.cancelled() and t.exception():
+                log.error("background task failed", exc_info=t.exception())
+
+        task.add_done_callback(done)
+        return task
+
+    def node_config(self) -> NodeConfig:
+        v = self.config.voice
+        return NodeConfig(
+            wake_threshold=v.wake_threshold,
+            chime=v.chime,
+            vad_end_silence_ms=v.vad_end_silence_ms,
+            max_utterance_s=v.max_utterance_s,
+            monitor=self.monitor,
+        )
+
+    async def set_monitor(self, on: bool) -> None:
+        self.monitor = on
+        await self.hub.to_node(self.node_config())
+
+    def on_secrets_changed(self) -> None:
+        self.spawn(self.router.check_health())
+
     def _on_node_change(self, connected: bool) -> None:
         self.status.update(mic=connected)
+        if connected:
+            self.spawn(self.hub.to_node(self.node_config()))
+        else:
+            self.monitor = False
 
     def _on_config_change(self, section: str, _value: Section) -> None:
         if section == "appearance":
             self.bus.publish(self.orchestrator.snapshot())
         if section == "location":
-            asyncio.get_running_loop().create_task(self.status.refresh_weather())
+            self.spawn(self.status.refresh_weather())
+        if section == "voice":
+            self.spawn(self.hub.to_node(self.node_config()))
 
     def health_extra(self) -> dict[str, object]:
         return {

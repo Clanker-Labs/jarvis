@@ -268,6 +268,25 @@ class NodeCommand(_Event):
     follow_up: bool = False
 
 
+class NodeConfig(_Event):
+    """Brain → audio node: live-tunable voice settings (from the admin Voice page)."""
+
+    type: Literal["node.config"] = "node.config"
+    wake_threshold: float = Field(0.5, ge=0.05, le=0.99)
+    chime: bool = True
+    vad_end_silence_ms: int = Field(700, ge=200, le=3000)
+    max_utterance_s: float = Field(30.0, ge=3, le=120)
+    # Admin mic meter: stream mic levels (and wake scores) continuously, not only while listening.
+    monitor: bool = False
+
+
+class WakeScore(_Event):
+    """Audio node → brain while monitoring: best wake-word score of the last ~0.5 s."""
+
+    type: Literal["wake.score"] = "wake.score"
+    score: float = Field(ge=0.0, le=1.0)
+
+
 class UiCommand(_Event):
     """UI → brain (touch interactions)."""
 
@@ -347,6 +366,8 @@ Event = Annotated[
     | PlaybackDone
     | BargeIn
     | NodeCommand
+    | NodeConfig
+    | WakeScore
     | UiCommand
     | UiSnapshot,
     Field(discriminator="type"),
@@ -390,6 +411,7 @@ __all__ = [
     "ListenPartial",
     "ListenStart",
     "NodeCommand",
+    "NodeConfig",
     "NowCard",
     "PlaybackDone",
     "SideEffect",
@@ -404,6 +426,7 @@ __all__ = [
     "UiConfig",
     "UiSnapshot",
     "WakeDetected",
+    "WakeScore",
     "Weather",
     "dump_event",
     "parse_event",

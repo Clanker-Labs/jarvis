@@ -139,3 +139,20 @@ async def test_mute_disables_wake():
     node.wake.fire = True
     await node.process_chunk(SPEECH)
     assert node.capture is None
+
+
+async def test_node_config_and_monitor():
+    from jarvis_protocol import NodeConfig, WakeScore
+
+    node, _ = make()
+    node.wake.threshold = 0.5
+    node.wake.last_score = 0.42
+    await node.handle_event(
+        NodeConfig(wake_threshold=0.7, chime=False, vad_end_silence_ms=500, monitor=True)
+    )
+    assert node.wake.threshold == 0.7 and node.s.end_silence_ms == 500 and node.monitor
+    for _ in range(6):
+        await node.process_chunk(SILENCE)
+    msgs = drain(node)
+    assert sum(1 for m in msgs if getattr(m, "type", "") == "listen.level") == 6
+    assert [m.score for m in msgs if isinstance(m, WakeScore)] == [0.42]

@@ -34,6 +34,7 @@ class WakeWord:
         self.threshold = threshold
         self.refractory_s = refractory_s
         self._last = 0.0
+        self.last_score = 0.0
         self._model = Model(
             wakeword_models=[str(path)],
             inference_framework="onnx",
@@ -45,6 +46,7 @@ class WakeWord:
         """Feed one 80 ms chunk. Returns the score when the wake word fires, else None."""
         scores = self._model.predict(np.frombuffer(pcm, dtype=np.int16))
         score = max(scores.values()) if scores else 0.0
+        self.last_score = float(score)
         now = time.monotonic()
         if score >= self.threshold and now - self._last > self.refractory_s:
             self._last = now

@@ -50,6 +50,8 @@ class Settings(BaseSettings):
 
     # Shared device token: audio node + kiosk UI authenticate their WebSockets with it.
     node_token: SecretStr = Field(SecretStr(""), alias="JARVIS_NODE_TOKEN")
+    # First admin password; hashed into the DB on first start, then changed from the admin panel.
+    admin_bootstrap_password: SecretStr = Field(SecretStr(""), alias="ADMIN_BOOTSTRAP_PASSWORD")
     # Master key (Fernet, urlsafe base64 32 bytes) encrypting secrets + OAuth tokens at rest.
     secret_key: SecretStr = Field(SecretStr(""), alias="JARVIS_SECRET_KEY")
     # Origins allowed to open /ws/ui (the kiosk page). Comma separated.

@@ -24,11 +24,13 @@ from jarvis_protocol import (
     ListenLevel,
     ListenStart,
     NodeCommand,
+    NodeConfig,
     PlaybackDone,
     StatusUpdate,
     TtsEnd,
     TtsStart,
     WakeDetected,
+    WakeScore,
     dump_event,
     pack_audio,
     parse_event,
@@ -98,6 +100,9 @@ class AudioNode:
         self._send_q: asyncio.Queue[str | bytes] = asyncio.Queue(maxsize=400)
         self._playing_stream: int | None = None
         self.connected = asyncio.Event()
+        self.monitor = False
+        self._monitor_best = 0.0
+        self._monitor_n = 0
         self._stopping = False
         self._report_task: asyncio.Task[None] | None = None
 
@@ -181,6 +186,8 @@ class AudioNode:
             self._preroll.append(pcm)
             if not self.muted:
                 score = self.wake.process(pcm)
+                if self.monitor:
+                    self._monitor_tick(pcm)
                 if score is not None:
                     log.info("wake word (%.2f)", score)
                     self.on_wake(score)
@@ -200,11 +207,37 @@ class AudioNode:
             log.info("end of utterance: %s", reason)
             self._end_capture(reason)
 
+    def _monitor_tick(self, pcm: bytes) -> None:
+        """Admin mic meter: level every chunk, best wake score every ~0.5 s."""
+        self.send(ListenLevel(level=round(rms_level(pcm), 3)))
+        self._monitor_best = max(self._monitor_best, float(getattr(self.wake, "last_score", 0.0)))
+        self._monitor_n += 1
+        if self._monitor_n >= 6:
+            self.send(WakeScore(score=round(min(self._monitor_best, 1.0), 3)))
+            self._monitor_best, self._monitor_n = 0.0, 0
+
+    def apply_config(self, cfg: NodeConfig) -> None:
+        if hasattr(self.wake, "threshold"):
+            self.wake.threshold = cfg.wake_threshold  # type: ignore[attr-defined]
+        self.chime_enabled = cfg.chime
+        self.s.end_silence_ms = cfg.vad_end_silence_ms
+        self.s.max_utterance_s = cfg.max_utterance_s
+        self.monitor = cfg.monitor
+        log.info(
+            "config: wake≥%.2f chime=%s end_silence=%dms monitor=%s",
+            cfg.wake_threshold,
+            cfg.chime,
+            cfg.vad_end_silence_ms,
+            cfg.monitor,
+        )
+
     # ------------------------------------------------------------------ inbound
 
     async def handle_event(self, ev: Event) -> None:
         if isinstance(ev, NodeCommand):
             await self._command(ev)
+        elif isinstance(ev, NodeConfig):
+            self.apply_config(ev)
         elif isinstance(ev, TtsStart):
             self._playing_stream = ev.stream_id
             self.player.start(ev.stream_id, ev.sample_rate)
