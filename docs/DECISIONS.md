@@ -127,6 +127,10 @@ brain = `brain,tailnet` on the GPU box, `pi` on the Pi, and point `BRAIN_URL` at
   mic loop retries with backoff if the device isn't there yet.
 - **Models baked into images** (wake word/VAD in the audio-node image) so a cold boot needs no
   internet. Piper/Whisper models for the brain download once into the `jarvis-data` volume.
+- **Timezone**: containers default to UTC, which made spoken times wrong; `make env` copies the
+  host's zone into `.env` as `TZ` (found on the first real deploy: Pi on Asia/Dubai).
+- **Snap Chromium** (Ubuntu's only Chromium) can't write hidden dirs in `$HOME`, so the kiosk profile
+  lives in `~/snap/chromium/common/jarvis-kiosk` when the snap is used.
 - `make dev-*` still runs services natively for development.
 
 ## Phase 2 — voice loop

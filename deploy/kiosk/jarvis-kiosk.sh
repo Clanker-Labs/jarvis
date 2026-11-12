@@ -15,8 +15,9 @@ done
 gsettings set org.gnome.desktop.session idle-delay 0 2>/dev/null || true
 gsettings set org.gnome.desktop.screensaver lock-enabled false 2>/dev/null || true
 
+# Ubuntu ships Chromium as a snap, which may only write under ~/snap/chromium (hidden dirs like
+# ~/.local are off limits to it).
 PROFILE="${XDG_STATE_HOME:-$HOME/.local/state}/jarvis-kiosk"
-mkdir -p "$PROFILE"
 
 CHROMIUM_FLAGS=(
   --kiosk "$URL"
@@ -31,6 +32,12 @@ CHROMIUM_FLAGS=(
 
 for b in chromium chromium-browser google-chrome; do
   if command -v "$b" >/dev/null; then
+    if [ -x /snap/bin/chromium ] && [ "$b" != google-chrome ]; then
+      b=/snap/bin/chromium
+      PROFILE="$HOME/snap/chromium/common/jarvis-kiosk"
+      CHROMIUM_FLAGS=("${CHROMIUM_FLAGS[@]/#--user-data-dir=*/--user-data-dir=$PROFILE}")
+    fi
+    mkdir -p "$PROFILE"
     # Clear the "Chromium didn't shut down correctly" flag after power cuts.
     sed -i 's/"exited_cleanly":false/"exited_cleanly":true/; s/"exit_type":"Crashed"/"exit_type":"Normal"/' \
       "$PROFILE/Default/Preferences" 2>/dev/null || true

@@ -54,6 +54,15 @@ def tailnet_hosts() -> str:
     return ",".join(dict.fromkeys(hosts))
 
 
+def host_timezone() -> str:
+    """IANA name of the host's zone, from the /etc/localtime symlink (e.g. 'Asia/Dubai')."""
+    try:
+        target = os.path.realpath("/etc/localtime")
+        return target.split("/zoneinfo/", 1)[1] if "/zoneinfo/" in target else ""
+    except OSError:
+        return ""
+
+
 def audio_gid() -> str:
     try:
         import grp
@@ -72,6 +81,7 @@ generated = {
     "ADMIN_BOOTSTRAP_PASSWORD": secrets.token_urlsafe(12),
     "TAILSCALE_IP": tailscale_ip(),
     "TAILNET_HOSTS": tailnet_hosts(),
+    "TZ": host_timezone(),
 }
 
 lines = []
