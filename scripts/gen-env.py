@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import secrets
 import subprocess
@@ -33,6 +34,26 @@ def tailscale_ip() -> str:
         return ""
 
 
+def tailnet_hosts() -> str:
+    """This machine's tailnet IPv4, short MagicDNS name and FQDN, e.g.
+    '100.118.180.66,jarvis-iot,jarvis-iot.tailxxxx.ts.net'."""
+    try:
+        out = subprocess.run(
+            ["tailscale", "status", "--self", "--peers=false", "--json"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        me = json.loads(out.stdout)["Self"] if out.returncode == 0 else {}
+    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+        return ""
+    fqdn = str(me.get("DNSName", "")).rstrip(".").lower()
+    hosts = [ip for ip in me.get("TailscaleIPs", []) if "." in ip]
+    if fqdn:
+        hosts += [fqdn.split(".")[0], fqdn]
+    return ",".join(dict.fromkeys(hosts))
+
+
 def audio_gid() -> str:
     try:
         import grp
@@ -50,6 +71,7 @@ generated = {
     "JARVIS_SECRET_KEY": base64.urlsafe_b64encode(secrets.token_bytes(32)).decode(),
     "ADMIN_BOOTSTRAP_PASSWORD": secrets.token_urlsafe(12),
     "TAILSCALE_IP": tailscale_ip(),
+    "TAILNET_HOSTS": tailnet_hosts(),
 }
 
 lines = []

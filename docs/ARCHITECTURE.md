@@ -24,11 +24,15 @@ All services are docker compose services (`compose.yaml`); the kiosk browser is 
 | `brain` | `brain` | Pi or tailnet host | 8000 | `/health`, `/ws/ui`, `/ws/node` |
 | (admin) | `brain` | same process as brain | 9000 | separate FastAPI app + separate frontend |
 | `qdrant` | `qdrant` | brain host | 127.0.0.1:6333 | optional vector DB |
+| `tailnet` | `tailnet` | every host | `TAILNET_PORTS` on the tailnet IP | forwards tailnet → 127.0.0.1 via the host's `tailscale serve` |
 
-Moving the brain off the Pi: on the new host set `COMPOSE_PROFILES=brain`, `BRAIN_HOST`/`ADMIN_HOST` to
-its Tailscale IP and `make up`; on the Pi set `COMPOSE_PROFILES=pi`,
-`BRAIN_URL=ws://<host-tailscale-ip>:8000`, `BRAIN_WS_URL=ws://<host-tailscale-ip>:8000/ws/ui`, then
-`make up`. `http://127.0.0.1:8080` is in the brain's default `UI_ORIGINS`.
+Every service binds to 127.0.0.1; the `tailnet` sidecar makes `TAILNET_PORTS` reachable at the
+machine's Tailscale IP / MagicDNS name (tailnet only), e.g. `http://jarvis-iot:9000` for admin.
+
+Moving the brain off the Pi: on the new host set `COMPOSE_PROFILES=brain,tailnet`,
+`TAILNET_PORTS=8000 9000`, add the Pi's kiosk origin to `UI_ORIGINS`, and `make up`; on the Pi set
+`COMPOSE_PROFILES=pi,tailnet`, `TAILNET_PORTS=8080`, `BRAIN_URL=ws://<host-ts-name>:8000`,
+`BRAIN_WS_URL=ws://<host-ts-name>:8000/ws/ui`, then `make up`.
 
 ## Event flow of one turn
 

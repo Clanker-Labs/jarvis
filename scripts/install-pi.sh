@@ -32,6 +32,20 @@ say "Building and starting the stack (the first build takes a while on a Pi)"
 docker compose up -d --build --remove-orphans
 docker compose ps
 
+say "Starting JARVIS at boot (systemd unit, sudo)"
+sed "s#@REPO@#$REPO#g" deploy/systemd/jarvis.service | sudo tee /etc/systemd/system/jarvis.service >/dev/null
+sudo systemctl daemon-reload
+sudo systemctl enable docker jarvis.service >/dev/null
+sudo systemctl enable tailscaled >/dev/null 2>&1 || true
+
+# The kiosk is a desktop-session app, so the session must start without a login prompt.
+GDM_CONF=/etc/gdm3/custom.conf
+if [ -f "$GDM_CONF" ] && ! grep -q "^AutomaticLogin=$USER" "$GDM_CONF"; then
+  say "Enabling desktop auto-login for $USER (GDM, sudo) so the kiosk opens at boot"
+  sudo sed -i -e '/^\[daemon\]/,/^\[/{/^#\? *AutomaticLoginEnable *=.*/d;/^#\? *AutomaticLogin *=.*/d}' \
+    -e "s/^\[daemon\]$/[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=$USER/" "$GDM_CONF"
+fi
+
 say "Installing kiosk autostart"
 mkdir -p "$HOME/.config/autostart"
 sed "s#@REPO@#$REPO#g" deploy/kiosk/jarvis-kiosk.desktop > "$HOME/.config/autostart/jarvis-kiosk.desktop"
@@ -41,4 +55,6 @@ if [ -d "$HOME/.config/labwc" ] || [ -f /etc/xdg/labwc/autostart ]; then
     echo "$REPO/deploy/kiosk/jarvis-kiosk.sh &" >> "$HOME/.config/labwc/autostart"
 fi
 
-say "Done. Containers restart automatically at boot; the kiosk opens with the desktop session."
+say "Done. On boot: Docker + jarvis.service start the stack, auto-login opens the kiosk."
+TS_NAME="$(tailscale status --self --peers=false 2>/dev/null | awk 'NR==1{print $2}')"
+[ -n "$TS_NAME" ] && say "From your tailnet: http://$TS_NAME:8080 (UI)  http://$TS_NAME:9000 (admin)"

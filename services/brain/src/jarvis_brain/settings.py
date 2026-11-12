@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     ui_origins: str = Field(
         "http://127.0.0.1:8080,http://localhost:8080,http://localhost:5173", alias="UI_ORIGINS"
     )
+    # This machine's tailnet names/IPs (comma separated; `make env` fills it). The tailnet sidecar
+    # exposes the UI/brain/admin ports on them, so they're trusted hosts and kiosk origins too.
+    tailnet_hosts: str = Field("", alias="TAILNET_HOSTS")
+    ui_port: int = Field(8080, alias="UI_PORT")
     ui_dist: Path | None = Field(None, alias="JARVIS_UI_DIST")
     admin_dist: Path = Field(Path("apps/admin/dist"), alias="JARVIS_ADMIN_DIST")
     skills_dir: Path = Field(Path("skills"), alias="JARVIS_SKILLS_DIR")
@@ -75,8 +79,24 @@ class Settings(BaseSettings):
         return v.strip()
 
     @property
+    def tailnet_host_list(self) -> list[str]:
+        return [h.strip().rstrip(".").lower() for h in self.tailnet_hosts.split(",") if h.strip()]
+
+    @property
     def allowed_origins(self) -> set[str]:
-        return {o.strip().rstrip("/") for o in self.ui_origins.split(",") if o.strip()}
+        origins = {o.strip().rstrip("/") for o in self.ui_origins.split(",") if o.strip()}
+        origins |= {f"http://{h}:{self.ui_port}" for h in self.tailnet_host_list}
+        return origins
+
+    @property
+    def trusted_hosts(self) -> list[str]:
+        """Host headers the admin app answers to (DNS-rebinding defence)."""
+        hosts = ["127.0.0.1", "localhost", *self.tailnet_host_list]
+        if self.admin_host not in hosts:
+            hosts.append(self.admin_host)
+        if self.env != "prod":
+            hosts.append("testserver")  # Starlette's TestClient
+        return hosts
 
     def check_binds(self) -> None:
         for name, host in (("BRAIN_HOST", self.brain_host), ("ADMIN_HOST", self.admin_host)):

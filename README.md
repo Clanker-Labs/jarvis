@@ -25,9 +25,12 @@ Everything is deployed with **docker compose**; only the kiosk browser runs on t
 
 ```bash
 make env          # .env with generated secrets (prints the initial admin password)
-make install-pi   # on the Pi: Docker, stack up, kiosk autostart (see docs/SETUP_PI.md)
+make install-pi   # on the Pi: Docker, stack up, start-on-boot, kiosk autostart (docs/SETUP_PI.md)
 make up           # (re)build + start — `make ps`, `make logs`, `make down`
 ```
+
+Then, from any device on your tailnet: admin at `http://<pi-name>:9000`, the live UI at
+`http://<pi-name>:8080` (the machine's Tailscale IP works too). Nothing is exposed on the LAN.
 
 Development:
 

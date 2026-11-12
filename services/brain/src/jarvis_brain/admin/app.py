@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .. import __version__
 from .api import build_router
@@ -40,6 +41,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
     app = FastAPI(
         title="JARVIS admin", version=__version__, docs_url=None, redoc_url=None, openapi_url=None
     )
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=rt.settings.trusted_hosts)
     app.include_router(build_router(rt, auth))
     app.include_router(build_tools_router(rt, auth))
     guarded, public = build_connectors_router(rt, auth)

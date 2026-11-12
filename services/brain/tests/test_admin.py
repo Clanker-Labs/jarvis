@@ -224,3 +224,9 @@ def test_tool_override_can_be_cleared(client, rt):
     assert rt.tools.get("web_search").enabled is False
     r = client.delete("/api/tools/web_search/override", headers=H)
     assert r.json()["enabled"] is True and "web_search" not in rt.config.get("tools").overrides
+
+
+def test_admin_rejects_unknown_host_header(client):
+    # DNS-rebinding defence: only loopback and this machine's tailnet names are served.
+    assert client.get("/api/auth/state", headers={"host": "evil.example:9000"}).status_code == 400
+    assert client.get("/api/auth/state", headers={"host": "127.0.0.1:9000"}).status_code != 400

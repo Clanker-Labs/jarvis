@@ -4,11 +4,16 @@
 #   brain  — orchestrator + admin API (ports 8000/9000)          → the brain host
 #   pi     — kiosk UI server (127.0.0.1:8080) + audio node        → the Pi
 #   qdrant — vector DB for knowledge (optional; sqlite-vec is the default)
-# Everything on one Pi: COMPOSE_PROFILES=brain,pi (the default).
+#   tailnet — sidecar publishing the ports below on this machine's Tailscale IP/name
+# Everything on one Pi: COMPOSE_PROFILES=brain,pi,tailnet (the default).
 #
-# Networking: jarvis services use the host network and bind only to what .env says
-# (127.0.0.1 or the Tailscale IP — the brain refuses anything else). Nothing is published on
-# 0.0.0.0. The kiosk browser itself runs on the host desktop (deploy/kiosk).
+# Networking: jarvis services use the host network and bind to 127.0.0.1 (the brain refuses
+# anything but loopback or a Tailscale IP). The `tailnet` sidecar forwards TAILNET_PORTS from the
+# host's tailnet address to localhost, so from any of your tailnet devices:
+#   http://<machine>:8080  kiosk UI     http://<machine>:9000  admin     (<machine> = name or 100.x IP)
+# Nothing is published on 0.0.0.0 or the LAN. The kiosk browser runs on the host desktop.
+# Boot: Docker starts at boot and every service is `restart: unless-stopped`; deploy/systemd also
+# runs `compose up` at boot so the stack comes back even after `make down`.
 name: jarvis
 
 x-common: &common
@@ -66,6 +71,28 @@ services:
         target: /run/user
         bind: { propagation: rslave }
     mem_limit: 400m
+
+  tailnet:
+    # Not <<: *common — it needs no secrets from .env, just the port list.
+    restart: unless-stopped
+    network_mode: host
+    logging: { driver: json-file, options: { max-size: "1m", max-file: "2" } }
+    profiles: [tailnet]
+    # Tiny shell image; the tailscale CLI is the host's own (static) binary, so it always matches
+    # the host's tailscaled version. Root here = root on the host socket, which serve requires.
+    image: busybox:1.36.1
+    init: true
+    environment:
+      TAILSCALE: /usr/local/bin/tailscale
+      TAILNET_PORTS: ${TAILNET_PORTS:-8080 8000 9000}
+    command: ["sh", "/serve.sh"]
+    volumes:
+      - ./deploy/tailnet/serve.sh:/serve.sh:ro
+      - ${TAILSCALE_BIN:-/usr/bin/tailscale}:/usr/local/bin/tailscale:ro
+      - /var/run/tailscale:/var/run/tailscale
+    mem_limit: 64m
+    read_only: true
+    stop_grace_period: 5s
 
   qdrant:
     profiles: [qdrant]

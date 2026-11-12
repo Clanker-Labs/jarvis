@@ -27,15 +27,27 @@ make install-pi
 
 `install-pi` installs Docker + the compose plugin and Chromium (apt, sudo), adds you to the
 `docker` group (log out/in once, then re-run), builds and starts the stack with
-`docker compose up -d --build`, and registers the kiosk launcher for GNOME and labwc. Containers
-restart automatically at boot; the kiosk browser starts with the desktop session.
+`docker compose up -d --build`, installs `jarvis.service` so the stack starts at boot, enables
+desktop auto-login (GDM) and registers the kiosk launcher for GNOME and labwc. After a reboot the
+stack comes up on its own and the kiosk opens full-screen; no login needed.
+
+From any device on your tailnet (the `tailnet` sidecar publishes the ports on this machine's
+Tailscale address, see DECISIONS.md → *Tailnet access*):
+
+| What | URL |
+|---|---|
+| Admin panel | `http://<pi-name>:9000` or `http://<pi-tailscale-ip>:9000` |
+| Kiosk UI (same live view as the screen) | `http://<pi-name>:8080` |
+
+`make env` writes this machine's tailnet names into `TAILNET_HOSTS`; re-run it (or edit the line)
+if you rename the machine on Tailscale.
 
 What runs where is set by `COMPOSE_PROFILES` in `.env`:
 
 | Setup | Pi `.env` | Brain host `.env` |
 |---|---|---|
-| Everything on the Pi | `COMPOSE_PROFILES=brain,pi` | — |
-| Brain on a tailnet box | `COMPOSE_PROFILES=pi`, `BRAIN_URL=ws://<box-ts-ip>:8000`, `BRAIN_WS_URL=ws://<box-ts-ip>:8000/ws/ui` | `COMPOSE_PROFILES=brain` (+`qdrant`), `BRAIN_HOST=<box-ts-ip>`, `ADMIN_HOST=<box-ts-ip>`, same `JARVIS_NODE_TOKEN` |
+| Everything on the Pi | `COMPOSE_PROFILES=brain,pi,tailnet` | — |
+| Brain on a tailnet box | `COMPOSE_PROFILES=pi,tailnet`, `TAILNET_PORTS=8080`, `BRAIN_URL=ws://<box-ts-name>:8000`, `BRAIN_WS_URL=ws://<box-ts-name>:8000/ws/ui` | `COMPOSE_PROFILES=brain,tailnet` (+`qdrant`), `TAILNET_PORTS=8000 9000`, `UI_ORIGINS=http://127.0.0.1:8080,http://<pi-ts-name>:8080`, same `JARVIS_NODE_TOKEN` |
 
 ## 3. Audio devices
 

@@ -66,3 +66,23 @@ def test_node_ws_handshake(settings):
 )
 def test_bind_guard(host, ok):
     assert is_safe_bind(host) is ok
+
+
+def test_tailnet_hosts_become_kiosk_origins(tmp_path):
+    s = Settings(
+        JARVIS_DATA_DIR=tmp_path,
+        TAILNET_HOSTS="100.101.102.103, Jarvis-IoT ,jarvis-iot.tail1234.ts.net.",
+        UI_ORIGINS="http://127.0.0.1:8080",
+    )
+    assert s.tailnet_host_list == ["100.101.102.103", "jarvis-iot", "jarvis-iot.tail1234.ts.net"]
+    assert s.allowed_origins == {
+        "http://127.0.0.1:8080",
+        "http://100.101.102.103:8080",
+        "http://jarvis-iot:8080",
+        "http://jarvis-iot.tail1234.ts.net:8080",
+    }
+
+
+def test_trusted_hosts_exclude_testserver_in_prod(tmp_path):
+    s = Settings(JARVIS_DATA_DIR=tmp_path, JARVIS_ENV="prod", TAILNET_HOSTS="jarvis-iot")
+    assert "jarvis-iot" in s.trusted_hosts and "testserver" not in s.trusted_hosts

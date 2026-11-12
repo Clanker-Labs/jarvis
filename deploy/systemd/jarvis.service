@@ -1,0 +1,20 @@
+# Starts the JARVIS compose stack at boot (installed by scripts/install-pi.sh; @REPO@ is filled in).
+# Containers also have `restart: unless-stopped`, but that alone won't bring the stack back after a
+# `make down` + reboot; this unit always does. Images are built by `make up`, not at boot.
+[Unit]
+Description=JARVIS voice assistant (docker compose)
+Documentation=file://@REPO@/docs/SETUP_PI.md
+Requires=docker.service
+After=docker.service network-online.target tailscaled.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=@REPO@
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStop=/usr/bin/docker compose stop
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

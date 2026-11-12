@@ -6,7 +6,7 @@ set -euo pipefail
 
 URL="${JARVIS_KIOSK_URL:-http://127.0.0.1:8080/}"
 
-for _ in $(seq 1 60); do
+for _ in $(seq 1 300); do  # cold boot: containers can take a while
   curl -fsS -o /dev/null "$URL" && break
   sleep 1
 done
