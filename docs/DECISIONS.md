@@ -111,7 +111,7 @@ One `compose.yaml` at the repo root runs everything; profiles pick what runs on 
 brain = `brain,tailnet` on the GPU box, `pi` on the Pi, and point `BRAIN_URL` at it. Only the kiosk
 *browser* runs on the host, because it needs the desktop session.
 
-- **Starts on boot, with no one logged in to a terminal**: Docker is enabled at boot and every
+- **Starts on boot, with no one logged in to a terminal** (root half: `scripts/pi-system-setup.sh`, also installs `docker-buildx`, which compose needs to build and Ubuntu doesn't pull in with `docker.io`): Docker is enabled at boot and every
   service is `restart: unless-stopped`. `install-pi` also installs `jarvis.service`
   (`deploy/systemd`), a oneshot that runs `docker compose up -d` after Docker and tailscaled, so the
   stack comes back even after a `make down` + reboot (images are built by `make up`, never at boot).
