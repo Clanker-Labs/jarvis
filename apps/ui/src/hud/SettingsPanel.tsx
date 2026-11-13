@@ -36,7 +36,7 @@ function LevelMeter() {
 function Row({ label, ok, value }: { label: string; ok: boolean; value: string }) {
   return (
     <div className="flex items-center justify-between py-1.5 text-[14px]">
-      <span className="text-white/50">{label}</span>
+      <span className="text-white/65">{label}</span>
       <span className="flex items-center gap-2 text-white/80">
         <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-teal-400" : "bg-white/20"}`} />
         {value}
@@ -90,7 +90,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="absolute inset-0 z-40 flex items-center justify-center bg-black/55"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
       onPointerDown={(e) => {
         e.stopPropagation(); // no swipe / push-to-talk underneath
         useUi.getState().touch();
@@ -101,30 +101,30 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       <section
         role="dialog"
         aria-label="Settings"
-        className="glass w-[min(560px,92vw)] rounded-3xl bg-[#0b0f15]/80 p-7 text-white/85"
+        className="max-h-[92vh] w-[min(560px,92vw)] overflow-y-auto rounded-3xl border border-white/10 bg-[#0d1219] p-7 text-white/90 shadow-[0_24px_80px_rgba(0,0,0,0.7)]"
       >
         <header className="mb-5 flex items-center justify-between">
           <h2 className="text-[20px] font-light tracking-wide">Settings</h2>
           <button
             type="button"
             aria-label="Close settings"
-            className="-m-2 rounded-full p-2 text-white/50 active:bg-white/10"
+            className="-m-2 rounded-full p-2 text-white/65 active:bg-white/10"
             onClick={onClose}
           >
             <X className="h-5 w-5" strokeWidth={1.5} />
           </button>
         </header>
 
-        <h3 className="mb-2 text-[11px] tracking-[0.2em] text-white/35 uppercase">Microphone</h3>
+        <h3 className="mb-2 text-[11px] tracking-[0.2em] text-white/55 uppercase">Microphone</h3>
         <div className="mb-4 flex items-center gap-3">
           {status.mic && !status.muted ? (
             <Mic className="h-6 w-6 shrink-0 text-teal-300" strokeWidth={1.5} />
           ) : (
-            <MicOff className="h-6 w-6 shrink-0 text-white/35" strokeWidth={1.5} />
+            <MicOff className="h-6 w-6 shrink-0 text-white/55" strokeWidth={1.5} />
           )}
           <div className="min-w-0 flex-1">
             <div className="truncate text-[16px]">{status.micDevice || "No microphone"}</div>
-            <div className="text-[13px] text-white/45">
+            <div className="text-[13px] text-white/65">
               {status.mic ? micText : "Plug in a USB mic or speakerphone — Jarvis picks it up within a few seconds."}
             </div>
           </div>
@@ -138,12 +138,12 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="mb-1 flex justify-between text-[12px] text-white/40">
+        <div className="mb-1 flex justify-between text-[12px] text-white/60">
           <span>Level</span>
           <span className="tabular-nums">Wake word {Math.round(wakeScore * 100)}%</span>
         </div>
         <LevelMeter />
-        <p className="mt-2 text-[12px] text-white/35">Say “Hey Jarvis” — the wake-word score should jump.</p>
+        <p className="mt-2 text-[12px] text-white/55">Say “Hey Jarvis” — the wake-word score should jump.</p>
 
         <div className="mt-5 flex gap-3">
           <button
@@ -172,12 +172,12 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
           </p>
         )}
 
-        <h3 className="mt-6 mb-1 text-[11px] tracking-[0.2em] text-white/35 uppercase">Connections</h3>
+        <h3 className="mt-6 mb-1 text-[11px] tracking-[0.2em] text-white/55 uppercase">Connections</h3>
         <Row label="Brain" ok={connected} value={connected ? "connected" : "offline"} />
         <Row label="Language model" ok={connected && status.llm} value={status.llm ? "ready" : "unavailable"} />
         <Row label="Internet" ok={connected && status.internet} value={status.internet ? "online" : "offline"} />
 
-        <p className="mt-5 text-[12px] leading-relaxed text-white/30">
+        <p className="mt-5 text-[12px] leading-relaxed text-white/50">
           Jarvis listens through the Pi's own audio hardware, not the browser, so the browser never asks for
           microphone permission. Other settings live in the admin panel on your tailnet.
         </p>

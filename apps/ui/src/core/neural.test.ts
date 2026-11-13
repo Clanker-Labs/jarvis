@@ -19,7 +19,7 @@ describe("neural sim", () => {
       return sim.fired;
     };
     const idle = run(0.035, 0.3);
-    const thinking = run(0.32, 0.6);
+    const thinking = run(0.32, 0.46);
     expect(idle).toBeGreaterThan(5); // never dead
     expect(thinking).toBeGreaterThan(idle * 4);
   });

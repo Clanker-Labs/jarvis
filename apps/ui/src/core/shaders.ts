@@ -3,6 +3,18 @@
 // – fresnel rim + inner swirl in the fragment shader, no texture lookups
 // – "bloom" is an additive billboard with an analytic falloff (no post-processing pass)
 
+// Tiny per-pixel noise (±½ LSB) breaks up 8-bit banding in the dark glow gradients. Interleaved
+// gradient noise: no sin() of big screen coordinates, which is garbage at mediump precision.
+const DITHER = /* glsl */ `
+float dither(){ return (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5) / 255.0; }
+`;
+
+// Hue-preserving limit: scale by the brightest channel instead of letting channels clip one by
+// one (which drifts every hot colour toward white, e.g. teal → pale cyan → white).
+const KEEP_HUE = /* glsl */ `
+vec3 keepHue(vec3 c, float limit){ float m = max(c.r, max(c.g, c.b)); return m > limit ? c * (limit / m) : c; }
+`;
+
 const SIMPLEX = /* glsl */ `
 // Ashima Arts 3D simplex noise (MIT) — https://github.com/ashima/webgl-noise
 vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
@@ -69,20 +81,25 @@ varying vec3 vNormalV;
 varying vec3 vViewDir;
 varying float vNoise;
 varying vec3 vPos;
+${DITHER}
+${KEEP_HUE}
 void main(){
   float facing = clamp(dot(normalize(vNormalV), normalize(vViewDir)), 0.0, 1.0);
   float fresnel = pow(1.0 - facing, 3.0);
+  // A slow shimmer of brightness along the rim (same hue: mixing in another hue greys it out).
+  float sheen = 0.85 + 0.15 * sin(vPos.y * 2.2 + vPos.x * 1.3 + uTime * 0.35);
   // Flowing filaments across the surface give the "energy" look without textures.
   float flow = sin(vNoise * 5.0 + vPos.y * 2.5 + uTime * 1.4) * 0.5 + 0.5;
   float filaments = pow(flow, 6.0);
-  vec3 hot = mix(uColor, vec3(1.0), 0.18);
+  vec3 hot = mix(uColor, vec3(1.0), 0.08);
   vec3 col = uColor * (0.015 + 0.04 * flow);
   // Filaments fade toward the centre of the disc: a translucent membrane over the neurons.
   col += hot * filaments * (0.1 + uEnergy * 0.4 + uAudio * 0.45) * (0.35 + 0.65 * (1.0 - facing));
-  col += hot * fresnel * (0.9 + uEnergy * 0.9 + uAudio * 0.6);
-  col += mix(uColor, vec3(1.0), 0.5) * pow(facing, 6.0) * (0.03 + uAudio * 0.5 + uEnergy * 0.12);
+  col += hot * sheen * fresnel * (0.9 + uEnergy * 0.9 + uAudio * 0.6);
+  col += mix(uColor, vec3(1.0), 0.25) * pow(facing, 6.0) * (0.03 + uAudio * 0.4 + uEnergy * 0.1);
+  col = keepHue(col, 0.8);
   col = mix(col, vec3(1.0), uFlash);
-  col *= uDim;
+  col = max(col * uDim + dither(), 0.0);
   // Premultiplied, additive: alpha tracks brightness so the canvas composites cleanly.
   gl_FragColor = vec4(col, clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0));
   #include <colorspace_fragment>
@@ -100,6 +117,8 @@ uniform float uIntensity;
 uniform float uFlash;
 uniform float uDim;
 varying vec2 vUv;
+${DITHER}
+${KEEP_HUE}
 void main(){
   float r = length(vUv);
   // Soft halo: bright just outside the sphere edge (~0.42), long falloff.
@@ -108,7 +127,8 @@ void main(){
   float inner = mix(0.08, 1.0, smoothstep(0.5, 0.72, r));
   float outer = exp(-(r - 0.72) * 7.0) * smoothstep(1.0, 0.8, r);
   float halo = r < 0.72 ? inner : outer;
-  vec3 col = mix(uColor, vec3(1.0), uFlash * 0.7) * halo * uIntensity * 0.8 * uDim;
+  vec3 col = keepHue(mix(uColor, vec3(1.0), uFlash * 0.7) * halo * uIntensity * 0.8, 0.4) * uDim;
+  col = max(col + dither() * step(0.002, halo), 0.0);
   gl_FragColor = vec4(col, clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0));
   #include <colorspace_fragment>
 }
@@ -192,7 +212,7 @@ void main(){
   vAct = aAct;
   vec3 p = position + drift(position, uTime);
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  gl_PointSize = uSize * (0.45 + aAct * 1.6) * (3.0 / -mv.z);
+  gl_PointSize = uSize * (0.45 + aAct * 1.1) * (3.0 / -mv.z);
   gl_Position = projectionMatrix * mv;
 }
 `;
@@ -206,10 +226,11 @@ void main(){
   vec2 c = gl_PointCoord * 2.0 - 1.0;
   float d = dot(c, c);
   if (d > 1.0) discard;
-  float soma = exp(-d * 9.0);           // bright nucleus
-  float halo = (1.0 - d) * 0.35;        // soft body
-  float a = (soma + halo) * (0.16 + vAct * 1.4) * uAlpha;
-  vec3 col = mix(uColor, vec3(1.0), 0.25 + vAct * 0.55) * a * uDim;
+  float soma = exp(-d * 12.0);          // bright nucleus
+  float halo = (1.0 - d) * 0.12;        // faint body: dozens overlap, so it must stay low
+  float a = (soma + halo) * (0.14 + vAct * 0.85) * uAlpha;
+  // Stay in the state colour; only the hottest nuclei approach white.
+  vec3 col = mix(uColor, vec3(1.0), 0.12 + vAct * 0.3) * a * uDim;
   gl_FragColor = vec4(col, clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0));
   #include <colorspace_fragment>
 }
@@ -245,8 +266,8 @@ void main(){
   float trail = behind > 0.0 ? exp(-behind * 5.0) * 0.45 : 0.0;
   float live = 1.0 - smoothstep(1.0, 1.6, front);   // fade once it has arrived
   float spike = (head + trail) * live;
-  float a = (0.05 + spike * 1.1) * uAlpha;
-  vec3 col = mix(uColor, vec3(1.0), spike * 0.6) * a * uDim;
+  float a = (0.045 + spike * 0.8) * uAlpha;
+  vec3 col = mix(uColor, vec3(1.0), spike * 0.3) * a * uDim;
   gl_FragColor = vec4(col, clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0));
   #include <colorspace_fragment>
 }

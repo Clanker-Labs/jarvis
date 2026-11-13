@@ -33,9 +33,11 @@ const QUALITY: Record<
   Quality,
   { detail: number; octaves: number; particles: number; neurons: number; fps: number; dpr: number }
 > = {
-  high: { detail: 28, octaves: 2, particles: 220, neurons: 130, fps: 60, dpr: 1.25 },
-  medium: { detail: 18, octaves: 2, particles: 120, neurons: 90, fps: 60, dpr: 1 },
-  low: { detail: 10, octaves: 1, particles: 60, neurons: 56, fps: 30, dpr: 0.85 },
+  // Never below native resolution: upscaling is what made the core look pixelated. Tiers trade
+  // mesh detail, octaves and frame rate instead.
+  high: { detail: 32, octaves: 2, particles: 220, neurons: 130, fps: 60, dpr: 1.5 },
+  medium: { detail: 24, octaves: 2, particles: 120, neurons: 90, fps: 60, dpr: 1 },
+  low: { detail: 16, octaves: 1, particles: 60, neurons: 56, fps: 30, dpr: 1 },
 };
 
 const SYNAPSE_SEGMENTS = 6; // each synapse is a gently bowed curve, not a straight wire
@@ -92,7 +94,9 @@ export class CoreRenderer {
     this.quality = quality;
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: false,
+      // MSAA: smooth silhouette and synapse lines. Cheap on the Pi's tile-based V3D GPU (resolved
+      // on-chip), unlike a post-process AA pass.
+      antialias: true,
       alpha: true,
       premultipliedAlpha: true,
       powerPreference: "high-performance",
@@ -301,8 +305,9 @@ export class CoreRenderer {
     const cur = this.cur;
     const sim = this.sim;
     // Voice drives activity: talking/listening makes the network fire with the sound.
-    const rate = cur.neural + this.audio * 0.9;
-    const spread = Math.min(0.75, cur.spread + this.audio * 0.25);
+    // Bounded: at most ~3× idle from the voice, or the overlapping glow washes out to white.
+    const rate = cur.neural + this.audio * 0.12;
+    const spread = Math.min(0.6, cur.spread + this.audio * 0.12);
     sim.step(dt, rate, spread);
     this.neurons.geometry.attributes.aAct!.needsUpdate = true;
 
@@ -369,7 +374,9 @@ export class CoreRenderer {
         this.last = now;
         return;
       }
-      const dt = this.last ? Math.min((now - this.last) / 1000, 0.1) : 1 / 60;
+      // Clamp both ways: a timestamp that steps backwards (tab resume, timer jitter) must never
+      // give a negative dt, which would make decaying values (like the wake flash) grow instead.
+      const dt = this.last ? Math.min(Math.max((now - this.last) / 1000, 0), 0.1) : 1 / 60;
       this.last = now;
       this.frame(dt, now);
       this.countFps(now);
@@ -410,7 +417,7 @@ export class CoreRenderer {
     cur.network += (tgt.network - cur.network) * approach(dt, 0.6);
     this.color.lerp(this.targetColor, approach(dt, 0.22));
     this.dim += (this.targetDim - this.dim) * approach(dt, 0.8);
-    this.flash = Math.max(0, this.flash - dt / 0.3);
+    this.flash = Math.min(1, Math.max(0, this.flash - dt / 0.3));
 
     // Audio level: attack fast, release slow. Stale levels (no updates for 250 ms) decay to 0.
     let raw = 0;

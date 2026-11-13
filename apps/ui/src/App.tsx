@@ -19,7 +19,7 @@ export function App() {
   const lastInteraction = useUi((s) => s.lastInteraction);
   const connected = useUi((s) => s.connected);
   const [cardsHidden, setCardsHidden] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(params.has("settings"));
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
   const night =
