@@ -173,6 +173,10 @@ def test_capture_devices_reads_only_capture_pcms(tmp_path):
     table.write_text(table.read_text() + "03-00: USB Audio : USB Audio : playback 1 : capture 1\n")
     assert capture_devices(table) == ["03-00: USB Audio : USB Audio : playback 1 : capture 1"]
     assert capture_devices(tmp_path / "missing") == []
+    from jarvis_audio.audio_io import capture_hw_present
+
+    assert capture_hw_present(tmp_path / "missing") is True  # unknown: let arecord decide
+    assert capture_hw_present(table) is True
 
 
 async def test_routed_default_without_hardware_is_no_microphone():

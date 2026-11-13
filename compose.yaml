@@ -61,9 +61,15 @@ services:
     group_add: ["${AUDIO_GID:-29}"]
     environment:
       PULSE_SERVER: unix:/run/user/${JARVIS_UID:-1000}/pulse/native
-    devices:
-      - /dev/snd:/dev/snd
+      ASOUND_DIR: /run/host-asound
+    # Hot-plug: /dev/snd is bind-mounted (not `devices:`, which snapshots the nodes at start) and
+    # the cgroup rule allows any ALSA device (major 116), so a USB mic plugged in later works.
+    device_cgroup_rules: ["c 116:* rmw"]
     volumes:
+      - /dev/snd:/dev/snd
+      # Docker masks /proc/asound in containers; the node needs it to tell a real mic apart from
+      # PipeWire's fallback (see audio_io.capture_devices).
+      - /proc/asound:/run/host-asound:ro
       # /run/user/<uid> is a tmpfs mounted at login — rslave lets it appear in the container
       # even when the container started first (cold boot).
       - type: bind

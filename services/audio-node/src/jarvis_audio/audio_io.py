@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import shutil
 import time
 import wave
@@ -27,7 +28,10 @@ CHUNK_BYTES = CHUNK_SAMPLES * 2
 
 
 def rms_level(pcm: bytes) -> float:
-    """Perceptual-ish 0..1 level for an s16le chunk (dBFS mapped from -60..0)."""
+    """Perceptual-ish 0..1 level for an s16le chunk (dBFS mapped from -72..0).
+
+    -72 rather than -60: noise-suppressing speakerphones gate a quiet room to ~-80 dBFS, and the
+    meter should still show it breathing."""
     if not pcm:
         return 0.0
     x = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
@@ -35,19 +39,35 @@ def rms_level(pcm: bytes) -> float:
     if rms <= 1e-6:
         return 0.0
     db = 20 * np.log10(rms)
-    return float(np.clip((db + 60) / 60, 0.0, 1.0))
+    return float(np.clip((db + 72) / 72, 0.0, 1.0))
 
 
 class NoMicrophone(RuntimeError):
     """No capture hardware: the mic loop reports mic=false and polls until one is plugged in."""
 
 
-def capture_devices(pcm_table: Path = Path("/proc/asound/pcm")) -> list[str]:
+def asound_dir() -> Path:
+    """The kernel's ALSA table. Docker masks /proc/asound inside containers, so compose bind-mounts
+    the host's copy and points ASOUND_DIR at it (it stays live: hot-plugged cards show up)."""
+    return Path(os.environ.get("ASOUND_DIR", "/proc/asound"))
+
+
+def capture_hw_present(pcm_table: Path | None = None) -> bool:
+    """True if a capture card exists, or if we can't tell (no table): then arecord decides."""
+    table = pcm_table or asound_dir() / "pcm"
+    if not table.exists():
+        log.warning("%s not readable — can't verify mic hardware, trusting arecord", table)
+        return True
+    return bool(capture_devices(table))
+
+
+def capture_devices(pcm_table: Path | None = None) -> list[str]:
     """ALSA PCM devices that can capture, e.g. ``['Speakerphone: USB Audio : capture 1']``.
 
     The kernel's view of the hardware, so it also works inside the container. PipeWire hides the
     difference: with no input at all it hands ``default`` its *output monitor*, and arecord then
     happily records the speaker, which is why a successful arecord is not evidence of a mic."""
+    pcm_table = pcm_table or asound_dir() / "pcm"
     try:
         lines = pcm_table.read_text().splitlines()
     except OSError:
@@ -55,10 +75,9 @@ def capture_devices(pcm_table: Path = Path("/proc/asound/pcm")) -> list[str]:
     return [ln.strip() for ln in lines if "capture" in ln]
 
 
-def mic_name(
-    pcm_table: Path = Path("/proc/asound/pcm"), cards: Path = Path("/proc/asound/cards")
-) -> str:
+def mic_name(pcm_table: Path | None = None, cards: Path | None = None) -> str:
     """Human name of the first capture card, e.g. ``'Jabra SPEAK 510 USB'`` ('' if none)."""
+    cards = cards or asound_dir() / "cards"
     devs = capture_devices(pcm_table)
     if not devs:
         return ""
@@ -89,7 +108,7 @@ class AlsaMic:
         self,
         device: str = "default",
         *,
-        has_capture_hw: Callable[[], bool] = lambda: bool(capture_devices()),
+        has_capture_hw: Callable[[], bool] = capture_hw_present,
     ) -> None:
         self.device = device
         self._has_capture_hw = has_capture_hw
