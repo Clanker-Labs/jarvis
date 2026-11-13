@@ -43,8 +43,9 @@ export function App() {
     if (Math.abs(dx) > SWIPE_PX && Math.abs(dx) > 2 * Math.abs(e.clientY - s.y)) setCardsHidden((h) => !h);
   };
 
+  // The app draws its own cursor (index.css); ?cursor=none hides it entirely.
   useEffect(() => {
-    document.documentElement.style.cursor = params.has("cursor") ? "auto" : "none";
+    document.documentElement.classList.toggle("cursor-hidden", params.get("cursor") === "none");
   }, []);
 
   const showCards = config.show_cards && !cardsHidden;

@@ -66,7 +66,7 @@ make up                 # after `git pull`: rebuild + restart what changed
 make down
 ```
 
-Open the kiosk on a desktop for debugging: `http://127.0.0.1:8080/?fps=1&cursor=1`.
+Open the kiosk on a desktop for debugging: `http://127.0.0.1:8080/?fps=1`.
 
 ## Troubleshooting
 

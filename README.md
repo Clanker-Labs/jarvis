@@ -42,7 +42,7 @@ make test lint    # what CI runs
 ```
 
 UI query flags: `?demo=1` (state cycle), `?fps=1` (frame counter), `?quality=high|medium|low`,
-`?night=0|1` (force night mode), `?cursor=1` (show the mouse pointer).
+`?night=0|1` (force night mode), `?cursor=none` (hide the app cursor).
 
 ## Status
 

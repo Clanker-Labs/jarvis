@@ -37,3 +37,30 @@ body,
   -webkit-backdrop-filter: blur(18px) saturate(1.2);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
 }
+
+/* App cursor: a small glowing reticle that matches the core (24 px, hotspot in the centre).
+   Touch-only kiosks never show it; with a mouse it replaces the system arrow everywhere. */
+:root {
+  --jarvis-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9' fill='none' stroke='%232dd4bf' stroke-opacity='0.18' stroke-width='4'/%3E%3Ccircle cx='12' cy='12' r='8' fill='none' stroke='%2399f6e4' stroke-opacity='0.85' stroke-width='1.2'/%3E%3Ccircle cx='12' cy='12' r='1.8' fill='%23ecfeff'/%3E%3C/svg%3E")
+      12 12,
+    auto;
+  --jarvis-cursor-active: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9.5' fill='%232dd4bf' fill-opacity='0.16' stroke='%232dd4bf' stroke-opacity='0.3' stroke-width='3'/%3E%3Ccircle cx='12' cy='12' r='6' fill='none' stroke='%23ecfeff' stroke-width='1.4'/%3E%3Ccircle cx='12' cy='12' r='2.2' fill='%23ecfeff'/%3E%3C/svg%3E")
+      12 12,
+    pointer;
+}
+
+html,
+html * {
+  cursor: var(--jarvis-cursor);
+}
+
+html button:not(:disabled),
+html [role="button"],
+html a[href] {
+  cursor: var(--jarvis-cursor-active);
+}
+
+html.cursor-hidden,
+html.cursor-hidden * {
+  cursor: none;
+}

@@ -16,19 +16,29 @@ import {
   coreVertex,
   glowFragment,
   glowVertex,
+  neuronFragment,
+  neuronVertex,
   particleFragment,
   particleVertex,
   ringFragment,
   ringVertex,
+  synapseFragment,
+  synapseVertex,
 } from "./shaders";
+import { mulberry32, NeuralSim, SPIKE_SPEED } from "./neural";
 
 export type Quality = "high" | "medium" | "low";
 
-const QUALITY: Record<Quality, { detail: number; octaves: number; particles: number; fps: number; dpr: number }> = {
-  high: { detail: 28, octaves: 2, particles: 220, fps: 60, dpr: 1.25 },
-  medium: { detail: 18, octaves: 2, particles: 120, fps: 60, dpr: 1 },
-  low: { detail: 10, octaves: 1, particles: 60, fps: 30, dpr: 0.85 },
+const QUALITY: Record<
+  Quality,
+  { detail: number; octaves: number; particles: number; neurons: number; fps: number; dpr: number }
+> = {
+  high: { detail: 28, octaves: 2, particles: 220, neurons: 130, fps: 60, dpr: 1.25 },
+  medium: { detail: 18, octaves: 2, particles: 120, neurons: 90, fps: 60, dpr: 1 },
+  low: { detail: 10, octaves: 1, particles: 60, neurons: 56, fps: 30, dpr: 0.85 },
 };
+
+const SYNAPSE_SEGMENTS = 6; // each synapse is a gently bowed curve, not a straight wire
 
 export interface FrameStats {
   fps: number;
@@ -48,6 +58,9 @@ export class CoreRenderer {
   private glow: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
   private particles!: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>;
   private ring: THREE.Mesh<THREE.RingGeometry, THREE.ShaderMaterial>;
+  private sim!: NeuralSim;
+  private neurons!: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>;
+  private synapses!: THREE.LineSegments<THREE.BufferGeometry, THREE.ShaderMaterial>;
   private raf = 0;
   private last = 0;
   private lastDraw = 0;
@@ -196,6 +209,117 @@ export class CoreRenderer {
       }),
     );
     this.group.add(this.particles);
+    this.buildNetwork(q.neurons);
+  }
+
+  private buildNetwork(n: number) {
+    if (this.neurons) {
+      for (const o of [this.neurons, this.synapses]) {
+        this.group.remove(o);
+        o.geometry.dispose();
+        o.material.dispose();
+      }
+    }
+    const sim = (this.sim = new NeuralSim(n));
+    const ng = new THREE.BufferGeometry();
+    ng.setAttribute("position", new THREE.BufferAttribute(sim.pos, 3));
+    ng.setAttribute("aAct", new THREE.BufferAttribute(sim.activation, 1).setUsage(THREE.DynamicDrawUsage));
+    ng.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1);
+    this.neurons = new THREE.Points(
+      ng,
+      new THREE.ShaderMaterial({
+        vertexShader: neuronVertex,
+        fragmentShader: neuronFragment,
+        uniforms: {
+          uTime: { value: 0 },
+          uSize: { value: 11 },
+          uColor: { value: this.color },
+          uAlpha: { value: 1 },
+          uDim: { value: 1 },
+        },
+        ...ADDITIVE,
+        depthWrite: false,
+        transparent: true,
+      }),
+    );
+
+    // Synapses: each edge is SEGMENTS line pieces along a curve bowed slightly off the straight line.
+    const S = SYNAPSE_SEGMENTS;
+    const verts = sim.edges.length * S * 2;
+    const pos = new Float32Array(verts * 3);
+    const tAttr = new Float32Array(verts);
+    const rand = mulberry32(11);
+    const P = sim.pos;
+    sim.edges.forEach((e, ei) => {
+      const a = [P[e.a * 3]!, P[e.a * 3 + 1]!, P[e.a * 3 + 2]!];
+      const b = [P[e.b * 3]!, P[e.b * 3 + 1]!, P[e.b * 3 + 2]!];
+      const bow = e.len * 0.28;
+      const c = a.map((v, k) => (v + b[k]!) / 2 + (rand() - 0.5) * bow);
+      const at = (t: number) => a.map((v, k) => (1 - t) * (1 - t) * v + 2 * (1 - t) * t * c[k]! + t * t * b[k]!);
+      for (let s = 0; s < S; s++) {
+        for (const [j, t] of [
+          [0, s / S],
+          [1, (s + 1) / S],
+        ] as const) {
+          const v = (ei * S + s) * 2 + j;
+          pos.set(at(t), v * 3);
+          tAttr[v] = t;
+        }
+      }
+    });
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    sg.setAttribute("aT", new THREE.BufferAttribute(tAttr, 1));
+    sg.setAttribute(
+      "aSpike",
+      new THREE.BufferAttribute(new Float32Array(verts * 3), 3).setUsage(THREE.DynamicDrawUsage),
+    );
+    sg.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1);
+    this.synapses = new THREE.LineSegments(
+      sg,
+      new THREE.ShaderMaterial({
+        vertexShader: synapseVertex,
+        fragmentShader: synapseFragment,
+        uniforms: {
+          uTime: { value: 0 },
+          uColor: { value: this.color },
+          uAlpha: { value: 1 },
+          uDim: { value: 1 },
+          uSpeed: { value: SPIKE_SPEED },
+        },
+        ...ADDITIVE,
+        depthWrite: false,
+        transparent: true,
+      }),
+    );
+    // Drawn before the membrane so the shell reads as a translucent skin over the network.
+    this.group.add(this.synapses, this.neurons);
+  }
+
+  /** Step the spiking network and copy its state into the two dynamic buffers. */
+  private stepNetwork(dt: number) {
+    const cur = this.cur;
+    const sim = this.sim;
+    // Voice drives activity: talking/listening makes the network fire with the sound.
+    const rate = cur.neural + this.audio * 0.9;
+    const spread = Math.min(0.75, cur.spread + this.audio * 0.25);
+    sim.step(dt, rate, spread);
+    this.neurons.geometry.attributes.aAct!.needsUpdate = true;
+
+    const spike = this.synapses.geometry.attributes.aSpike as THREE.BufferAttribute;
+    const arr = spike.array as Float32Array;
+    const per = SYNAPSE_SEGMENTS * 2;
+    for (let e = 0; e < sim.edges.length; e++) {
+      const age = Math.min(sim.time - sim.lastSpikeAt[e]!, 99);
+      const dir = sim.lastSpikeDir[e]!;
+      const len = sim.edges[e]!.len;
+      for (let v = e * per, end = v + per; v < end; v++) {
+        arr[v * 3] = age;
+        arr[v * 3 + 1] = dir;
+        arr[v * 3 + 2] = len;
+      }
+    }
+    spike.needsUpdate = true;
   }
 
   setQuality(q: Quality) {
@@ -206,7 +330,10 @@ export class CoreRenderer {
   }
 
   setState(state: JarvisState, color: string) {
-    if (state === "WAKE" && this.state !== "WAKE") this.flash = 1;
+    if (state === "WAKE" && this.state !== "WAKE") {
+      this.flash = 1;
+      this.sim.burst(6, 0.7); // the wake word ripples out from the centre
+    }
     this.state = state;
     this.target = STATE_PARAMS[state];
     this.targetColor.set(color);
@@ -278,6 +405,9 @@ export class CoreRenderer {
     cur.ring += (tgt.ring - cur.ring) * approach(dt, 0.3);
     cur.breathe += (tgt.breathe - cur.breathe) * approach(dt, 0.6);
     cur.pulse += (tgt.pulse - cur.pulse) * k;
+    cur.neural += (tgt.neural - cur.neural) * approach(dt, 0.5);
+    cur.spread += (tgt.spread - cur.spread) * approach(dt, 0.5);
+    cur.network += (tgt.network - cur.network) * approach(dt, 0.6);
     this.color.lerp(this.targetColor, approach(dt, 0.22));
     this.dim += (this.targetDim - this.dim) * approach(dt, 0.8);
     this.flash = Math.max(0, this.flash - dt / 0.3);
@@ -295,6 +425,14 @@ export class CoreRenderer {
     const scale = 1 + breath + heartbeat + this.audio * 0.06;
     this.core.scale.setScalar(scale);
     this.group.rotation.y = t * 0.05;
+    this.group.rotation.x = Math.sin(t * 0.13) * 0.12; // a slow sway, never a mechanical spin
+
+    this.stepNetwork(dt * this.timeScale);
+    for (const m of [this.neurons.material, this.synapses.material]) {
+      m.uniforms.uTime!.value = t;
+      m.uniforms.uAlpha!.value = cur.network * (1 + this.flash * 0.8);
+      m.uniforms.uDim!.value = this.dim;
+    }
 
     const cu = this.core.material.uniforms;
     cu.uTime!.value = t;

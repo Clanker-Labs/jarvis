@@ -46,7 +46,9 @@ void main(){
   float n = snoise(p * 1.6 + vec3(0.0, t, t * 0.7));
   ${octaves > 1 ? "n += 0.35 * snoise(p * 3.0 - vec3(t * 1.3, 0.0, t));" : ""}
   float amp = 0.02 + uEnergy * 0.05 + uAudio * 0.1;
-  p += normal * n * amp;
+  // Slow, large "lobes" so the membrane breathes unevenly, like tissue rather than a ball.
+  float lobes = sin(p.x * 2.1 + uTime * 0.31) * sin(p.y * 1.7 - uTime * 0.23) * sin(p.z * 1.9 + uTime * 0.27);
+  p += normal * (n * amp + lobes * 0.035);
   vNoise = n;
   vPos = p;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
@@ -74,8 +76,9 @@ void main(){
   float flow = sin(vNoise * 5.0 + vPos.y * 2.5 + uTime * 1.4) * 0.5 + 0.5;
   float filaments = pow(flow, 6.0);
   vec3 hot = mix(uColor, vec3(1.0), 0.18);
-  vec3 col = uColor * (0.02 + 0.06 * flow);
-  col += hot * filaments * (0.18 + uEnergy * 0.55 + uAudio * 0.5);
+  vec3 col = uColor * (0.015 + 0.04 * flow);
+  // Filaments fade toward the centre of the disc: a translucent membrane over the neurons.
+  col += hot * filaments * (0.1 + uEnergy * 0.4 + uAudio * 0.45) * (0.35 + 0.65 * (1.0 - facing));
   col += hot * fresnel * (0.9 + uEnergy * 0.9 + uAudio * 0.6);
   col += mix(uColor, vec3(1.0), 0.5) * pow(facing, 6.0) * (0.03 + uAudio * 0.5 + uEnergy * 0.12);
   col = mix(col, vec3(1.0), uFlash);
@@ -167,4 +170,84 @@ void main(){
 export const ringVertex = /* glsl */ `
 varying vec2 vUv;
 void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+`;
+
+// ---------------------------------------------------------------- neural network inside the core
+
+// A slow, smooth drift field shared by neurons and synapses so the network "floats" organically
+// and the lines stay attached to their neurons (both sample the same field at the same points).
+const DRIFT = /* glsl */ `
+vec3 drift(vec3 p, float t){
+  return 0.035 * vec3(sin(t*0.53 + p.y*4.1), sin(t*0.47 + p.z*3.7), sin(t*0.61 + p.x*4.3));
+}
+`;
+
+export const neuronVertex = /* glsl */ `
+uniform float uTime;
+uniform float uSize;
+attribute float aAct;      // 0..1 activation (1 = just fired)
+varying float vAct;
+${DRIFT}
+void main(){
+  vAct = aAct;
+  vec3 p = position + drift(position, uTime);
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  gl_PointSize = uSize * (0.45 + aAct * 1.6) * (3.0 / -mv.z);
+  gl_Position = projectionMatrix * mv;
+}
+`;
+
+export const neuronFragment = /* glsl */ `
+uniform vec3 uColor;
+uniform float uAlpha;
+uniform float uDim;
+varying float vAct;
+void main(){
+  vec2 c = gl_PointCoord * 2.0 - 1.0;
+  float d = dot(c, c);
+  if (d > 1.0) discard;
+  float soma = exp(-d * 9.0);           // bright nucleus
+  float halo = (1.0 - d) * 0.35;        // soft body
+  float a = (soma + halo) * (0.16 + vAct * 1.4) * uAlpha;
+  vec3 col = mix(uColor, vec3(1.0), 0.25 + vAct * 0.55) * a * uDim;
+  gl_FragColor = vec4(col, clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0));
+  #include <colorspace_fragment>
+}
+`;
+
+export const synapseVertex = /* glsl */ `
+uniform float uTime;
+attribute float aT;        // 0..1 position along the synapse (a → b)
+attribute vec3 aSpike;     // age of the latest spike (s), direction ±1, synapse length
+varying float vT;
+varying vec3 vSpike;
+${DRIFT}
+void main(){
+  vT = aT;
+  vSpike = aSpike;
+  vec3 p = position + drift(position, uTime);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}
+`;
+
+export const synapseFragment = /* glsl */ `
+uniform vec3 uColor;
+uniform float uAlpha;
+uniform float uDim;
+uniform float uSpeed;
+varying float vT;
+varying vec3 vSpike;
+void main(){
+  float along = vSpike.y > 0.0 ? vT : 1.0 - vT;      // distance from the firing neuron, 0..1
+  float front = vSpike.x * uSpeed / max(vSpike.z, 0.01); // how far the spike has travelled, 0..1+
+  float behind = front - along;                     // > 0: the spike has passed this point
+  float head = exp(-behind * behind * 90.0);
+  float trail = behind > 0.0 ? exp(-behind * 5.0) * 0.45 : 0.0;
+  float live = 1.0 - smoothstep(1.0, 1.6, front);   // fade once it has arrived
+  float spike = (head + trail) * live;
+  float a = (0.05 + spike * 1.1) * uAlpha;
+  vec3 col = mix(uColor, vec3(1.0), spike * 0.6) * a * uDim;
+  gl_FragColor = vec4(col, clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0));
+  #include <colorspace_fragment>
+}
 `;
