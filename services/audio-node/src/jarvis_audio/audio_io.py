@@ -38,17 +38,48 @@ def rms_level(pcm: bytes) -> float:
     return float(np.clip((db + 60) / 60, 0.0, 1.0))
 
 
+class NoMicrophone(RuntimeError):
+    """No capture hardware: the mic loop reports mic=false and polls until one is plugged in."""
+
+
+def capture_devices(pcm_table: Path = Path("/proc/asound/pcm")) -> list[str]:
+    """ALSA PCM devices that can capture, e.g. ``['Speakerphone: USB Audio : capture 1']``.
+
+    The kernel's view of the hardware, so it also works inside the container. PipeWire hides the
+    difference: with no input at all it hands ``default`` its *output monitor*, and arecord then
+    happily records the speaker, which is why a successful arecord is not evidence of a mic."""
+    try:
+        lines = pcm_table.read_text().splitlines()
+    except OSError:
+        return []
+    return [ln.strip() for ln in lines if "capture" in ln]
+
+
 class Mic(Protocol):
     def chunks(self) -> AsyncIterator[bytes]: ...
     async def close(self) -> None: ...
 
 
+# Device names routed through PipeWire/Pulse, where "it opened" doesn't mean a mic exists.
+ROUTED_DEVICES = {"default", "pulse", "pipewire", "sysdefault"}
+
+
 class AlsaMic:
-    def __init__(self, device: str = "default") -> None:
+    def __init__(
+        self,
+        device: str = "default",
+        *,
+        has_capture_hw: Callable[[], bool] = lambda: bool(capture_devices()),
+    ) -> None:
         self.device = device
+        self._has_capture_hw = has_capture_hw
         self._proc: asyncio.subprocess.Process | None = None
 
     async def chunks(self) -> AsyncIterator[bytes]:
+        # An explicit hardware name (plughw:CARD=…) fails on its own if it's missing; the routed
+        # names need the hardware check (see capture_devices).
+        if self.device in ROUTED_DEVICES and not self._has_capture_hw():
+            raise NoMicrophone("no microphone connected")
         exe = shutil.which("arecord")
         if not exe:
             raise RuntimeError("arecord not found — install alsa-utils")

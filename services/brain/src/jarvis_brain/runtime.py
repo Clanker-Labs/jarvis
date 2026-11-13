@@ -252,7 +252,10 @@ class Runtime:
             self.bus.publish(self.orchestrator.snapshot())
 
     def _on_node_change(self, connected: bool) -> None:
-        self.status.update(mic=connected)
+        # The node reports whether a mic is actually streaming (status.update); a connection alone
+        # says nothing about that. Only a lost node is a known "no mic".
+        if not connected:
+            self.status.update(mic=False)
         if connected:
             self.spawn(self.hub.to_node(self.node_config()))
         else:

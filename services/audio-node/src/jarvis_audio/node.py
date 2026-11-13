@@ -40,7 +40,15 @@ from jarvis_protocol.events import Event
 from pydantic import ValidationError
 
 from . import __version__
-from .audio_io import CHUNK_SAMPLES, SAMPLE_RATE, Mic, Player, make_chime, rms_level
+from .audio_io import (
+    CHUNK_SAMPLES,
+    SAMPLE_RATE,
+    Mic,
+    NoMicrophone,
+    Player,
+    make_chime,
+    rms_level,
+)
 from .detect import Endpointer
 from .settings import NodeSettings
 
@@ -94,6 +102,8 @@ class AudioNode:
         self.ws: websockets.ClientConnection | None = None
         self.capture: Capture | None = None
         self.muted = False
+        # True only while real mic audio is flowing (not merely "arecord started").
+        self.mic_ok = False
         self.chime_enabled = settings.chime
         self._next_stream = 1
         self._preroll: deque[bytes] = deque(maxlen=PREROLL_CHUNKS)
@@ -271,10 +281,10 @@ class AudioNode:
                 self.muted = True
                 if self.capture:
                     self._end_capture("cancelled")
-                self.send(StatusUpdate(mic=True, muted=True))
+                self.send(StatusUpdate(mic=self.mic_ok, muted=True))
             case "unmute":
                 self.muted = False
-                self.send(StatusUpdate(mic=True, muted=False))
+                self.send(StatusUpdate(mic=self.mic_ok, muted=False))
 
     def handle_audio(self, frame: bytes) -> None:
         try:
@@ -289,21 +299,39 @@ class AudioNode:
         """Feed mic audio forever; if the device disappears (unplugged, PipeWire restarting at
         boot), report it and retry with backoff instead of crashing."""
         delay = 1.0
+        last_error = ""
         while not self._stopping:
             try:
                 async for chunk in self.mic.chunks():
                     delay = 1.0
+                    if not self.mic_ok:
+                        self._set_mic(True)
+                        last_error = ""
+                        log.info("microphone streaming")
                     try:
                         await self.process_chunk(chunk)
                     except Exception:
                         log.exception("audio chunk processing failed")
                     if self._stopping:
                         return
+            except NoMicrophone as e:
+                if str(e) != last_error:  # once per state change, not every poll
+                    log.warning("%s — will start listening as soon as one is plugged in", e)
+                    last_error = str(e)
+                self._set_mic(False)
+                delay = 3.0  # cheap check; poll quickly so a plugged-in mic is picked up fast
             except (RuntimeError, OSError) as e:
-                log.warning("microphone unavailable: %s — retrying in %.0fs", e, delay)
-                self.send(StatusUpdate(mic=False, muted=self.muted))
+                if str(e) != last_error:
+                    log.warning("microphone unavailable: %s — retrying", e)
+                    last_error = str(e)
+                self._set_mic(False)
             await asyncio.sleep(delay)
             delay = min(delay * 2, 15)
+
+    def _set_mic(self, ok: bool) -> None:
+        if ok != self.mic_ok:
+            self.mic_ok = ok
+            self.send(StatusUpdate(mic=ok, muted=self.muted))
 
     async def socket_loop(self) -> None:
         delay = 0.5
@@ -332,7 +360,7 @@ class AudioNode:
                             )
                         )
                     )
-                    await ws.send(dump_event(StatusUpdate(mic=True, muted=self.muted)))
+                    await ws.send(dump_event(StatusUpdate(mic=self.mic_ok, muted=self.muted)))
                     log.info("connected to brain at %s", self.s.ws_url)
                     self.connected.set()
                     delay = 0.5

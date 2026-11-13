@@ -156,3 +156,71 @@ async def test_node_config_and_monitor():
     msgs = drain(node)
     assert sum(1 for m in msgs if getattr(m, "type", "") == "listen.level") == 6
     assert [m.score for m in msgs if isinstance(m, WakeScore)] == [0.42]
+
+
+# ---------------------------------------------------------------------- microphone presence
+
+
+def test_capture_devices_reads_only_capture_pcms(tmp_path):
+    from jarvis_audio.audio_io import capture_devices
+
+    table = tmp_path / "pcm"
+    table.write_text(
+        "00-00: bcm2835 Headphones : bcm2835 Headphones : playback 8\n"
+        "01-00: MAI PCM i2s-hifi-0 : MAI PCM i2s-hifi-0 : playback 1\n"
+    )
+    assert capture_devices(table) == []  # a Pi 4 with nothing plugged in
+    table.write_text(table.read_text() + "03-00: USB Audio : USB Audio : playback 1 : capture 1\n")
+    assert capture_devices(table) == ["03-00: USB Audio : USB Audio : playback 1 : capture 1"]
+    assert capture_devices(tmp_path / "missing") == []
+
+
+async def test_routed_default_without_hardware_is_no_microphone():
+    import pytest
+    from jarvis_audio.audio_io import AlsaMic, NoMicrophone
+
+    with pytest.raises(NoMicrophone):
+        async for _ in AlsaMic("default", has_capture_hw=lambda: False).chunks():
+            pass
+
+
+class ScriptedMic:
+    """Raises NoMicrophone `missing` times, then streams `chunks` chunks."""
+
+    def __init__(self, missing, chunks):
+        self.missing, self.left = missing, chunks
+
+    async def chunks(self):
+        from jarvis_audio.audio_io import NoMicrophone
+
+        if self.missing:
+            self.missing -= 1
+            raise NoMicrophone("no microphone connected")
+        for _ in range(self.left):
+            yield SILENCE
+        raise RuntimeError("unplugged")
+
+    async def close(self):
+        pass
+
+
+async def test_mic_status_follows_real_audio(monkeypatch):
+    from jarvis_protocol import StatusUpdate
+
+    node, _ = make()
+    node.mic = ScriptedMic(missing=1, chunks=3)
+    sleeps = []
+
+    async def fast_sleep(s):
+        sleeps.append(s)
+        if len(sleeps) >= 2:
+            node._stopping = True
+
+    monkeypatch.setattr("jarvis_audio.node.asyncio.sleep", fast_sleep)
+    assert node.mic_ok is False
+    await node.handle_event(NodeCommand(command="unmute"))
+    await node.mic_loop()
+    statuses = [e.mic for e in drain(node) if isinstance(e, StatusUpdate)]
+    # unmute reports the real state (no mic yet); then audio flows -> True; unplugged -> False
+    assert statuses == [False, True, False]
+    assert sleeps[0] == 3.0  # missing hardware is polled quickly

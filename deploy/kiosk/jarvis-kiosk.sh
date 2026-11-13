@@ -41,7 +41,17 @@ for b in chromium chromium-browser google-chrome; do
     # Clear the "Chromium didn't shut down correctly" flag after power cuts.
     sed -i 's/"exited_cleanly":false/"exited_cleanly":true/; s/"exit_type":"Crashed"/"exit_type":"Normal"/' \
       "$PROFILE/Default/Preferences" 2>/dev/null || true
-    exec "$b" "${CHROMIUM_FLAGS[@]}"
+    # Relaunch after a crash (non-zero exit), but not after a deliberate close (exit 0), so the
+    # desktop stays usable. Give up if it crashes in a tight loop.
+    crashes=0
+    while :; do
+      started=$(date +%s)
+      "$b" "${CHROMIUM_FLAGS[@]}" && exit 0
+      [ $(( $(date +%s) - started )) -gt 60 ] && crashes=0 || crashes=$((crashes + 1))
+      [ "$crashes" -ge 5 ] && { echo "kiosk browser keeps crashing; giving up" >&2; exit 1; }
+      echo "kiosk browser exited abnormally; relaunching" >&2
+      sleep 3
+    done
   fi
 done
 
