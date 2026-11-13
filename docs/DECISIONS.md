@@ -463,3 +463,20 @@ never used as chat models, even if listed in a chat route.
 MCP env/header values are masked in `GET/PUT /api/config/mcp` (`${SECRET}` references stay visible;
 saving a masked value keeps the stored one); tool overrides can be removed
 (`DELETE /api/tools/{name}/override`).
+
+## Kiosk settings panel (mic status and test)
+
+- A gear in the kiosk top bar opens a small panel with the mic hardware name, mute, a live level meter
+  with the wake-word score, a 3 s record-and-play-back test, and a speaker test (the chime). It covers
+  only what you need at the device. Everything else stays in the admin panel, which the kiosk still
+  never links to.
+- The mic is read by the audio node through ALSA, not by the browser (`getUserMedia`). That is
+  deliberate: it works with no browser open, and a tailnet browser on another device must not become
+  the house mic. So no browser permission prompt ever appears.
+- The mic name comes from `/proc/asound/cards` for the first card that can capture, and travels in
+  `status.update.mic_device`. While the panel is open it turns on the node's monitor mode (the same one
+  the admin Voice page uses) and turns it off when closed. The panel closes itself after 90 s idle, so
+  the meter can't be left streaming. While a test is recording or playing back, audio bypasses the wake
+  word, so saying "hey Jarvis" during the test doesn't start a turn.
+- `wake.score` and the new `mic.test` events are now forwarded to the UI bus. Before this, the
+  orchestrator dropped `wake.score`, so the admin wake meter never moved.

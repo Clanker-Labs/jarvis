@@ -161,3 +161,40 @@ async def test_mute_is_forwarded(cmd):
     await orch.on_ui_command(UiCommand(command=cmd))
     assert hub.commands()[-1].command == cmd
     assert orch.status.flags["muted"] is (cmd == "mute")
+
+
+async def test_settings_panel_commands():
+    from jarvis_protocol import MicTest
+
+    orch, hub, _ = make()
+    seen = []
+    orch.on_monitor = lambda on: _record(seen, on)
+    await orch.on_ui_command(UiCommand(command="mic_test"))
+    await orch.on_ui_command(UiCommand(command="speaker_test"))
+    await orch.on_ui_command(UiCommand(command="monitor_on"))
+    await orch.on_ui_command(UiCommand(command="monitor_off"))
+    assert [c.command for c in hub.commands()] == ["mic.test", "chime"]
+    assert seen == [True, False]
+
+    # Without a node the test fails visibly instead of hanging on "recording…".
+    async def offline(ev):
+        return False
+
+    hub.to_node = offline
+    with orch.bus.subscription() as sub:
+        await orch.on_ui_command(UiCommand(command="mic_test"))
+        ev = sub.queue.get_nowait()
+    assert isinstance(ev, MicTest) and ev.phase == "failed"
+
+
+async def _record(seen, on):
+    seen.append(on)
+
+
+async def test_node_status_carries_mic_device():
+    from jarvis_protocol import StatusUpdate
+
+    orch, _, _ = make()
+    await orch.on_node_event(StatusUpdate(mic=True, mic_device="Jabra SPEAK 510 USB"))
+    snap = orch.status.snapshot()
+    assert snap.mic and snap.mic_device == "Jabra SPEAK 510 USB"

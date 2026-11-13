@@ -18,6 +18,7 @@ export interface StatusFlags {
   llm: boolean;
   internet: boolean;
   mic: boolean;
+  mic_device?: string;
   offline_voice: boolean;
   muted: boolean;
   brain: boolean;

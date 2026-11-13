@@ -165,7 +165,7 @@ def build_router(rt: Runtime, auth: AdminAuth) -> APIRouter:
         r = rt.router
         return {
             "state": rt.orchestrator.sm.state,
-            "status": rt.status.flags,
+            "status": {**rt.status.flags, "mic_device": rt.status.mic_device},
             "services": {
                 "brain": True,
                 "audio_node": rt.hub.node_connected,

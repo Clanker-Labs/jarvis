@@ -27,8 +27,8 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         setState(ev.state);
         break;
       case "status.update": {
-        const { brain, llm, internet, mic, muted, offline_voice } = ev;
-        setStatus({ brain, llm, internet, mic, muted, offline_voice });
+        const { brain, llm, internet, mic, mic_device, muted, offline_voice } = ev;
+        setStatus({ brain, llm, internet, mic, mic_device, muted, offline_voice });
         break;
       }
       case "agent.done":

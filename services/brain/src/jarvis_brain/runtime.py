@@ -139,6 +139,7 @@ class Runtime:
         self.orchestrator.on_turn_done.append(self.traces.save)
         self.started_at = time.time()
         self.monitor = False
+        self.orchestrator.on_monitor = self.set_monitor
         self.admin_auth: Any = None
         self._tasks: set[asyncio.Task[Any]] = set()
         self.hub.on_node_change.append(self._on_node_change)
@@ -255,7 +256,7 @@ class Runtime:
         # The node reports whether a mic is actually streaming (status.update); a connection alone
         # says nothing about that. Only a lost node is a known "no mic".
         if not connected:
-            self.status.update(mic=False)
+            self.status.update(mic=False, mic_device="")
         if connected:
             self.spawn(self.hub.to_node(self.node_config()))
         else:

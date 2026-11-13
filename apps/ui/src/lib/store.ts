@@ -7,7 +7,17 @@ export interface UiStore {
   state: JarvisState;
   config: UiConfig;
   colors: Record<JarvisState, string>;
-  status: { llm: boolean; internet: boolean; mic: boolean; offlineVoice: boolean; muted: boolean };
+  status: {
+    llm: boolean;
+    internet: boolean;
+    mic: boolean;
+    micDevice: string;
+    offlineVoice: boolean;
+    muted: boolean;
+  };
+  /** Settings panel: record-and-play-back test progress, and the latest wake-word score. */
+  micTest: { phase: "idle" | "recording" | "playing" | "done" | "failed"; peak: number; detail: string };
+  wakeScore: number;
   weather: Weather | null;
   heard: { text: string; final: boolean; at: number };
   subtitle: { text: string; at: number; done: boolean };
@@ -38,7 +48,9 @@ export const useUi = create<UiStore>((set, get) => ({
   state: "IDLE",
   config: DEFAULT_CONFIG,
   colors: DEFAULT_COLORS,
-  status: { llm: false, internet: false, mic: false, offlineVoice: false, muted: false },
+  status: { llm: false, internet: false, mic: false, micDevice: "", offlineVoice: false, muted: false },
+  micTest: { phase: "idle", peak: 0, detail: "" },
+  wakeScore: 0,
   weather: null,
   heard: { text: "", final: false, at: 0 },
   subtitle: { text: "", at: 0, done: true },
@@ -79,6 +91,7 @@ export const useUi = create<UiStore>((set, get) => ({
             llm: e.llm,
             internet: e.internet,
             mic: e.mic,
+            micDevice: e.mic_device,
             offlineVoice: e.offline_voice,
             muted: e.muted,
           },
@@ -87,6 +100,12 @@ export const useUi = create<UiStore>((set, get) => ({
         break;
       case "listen.level":
         setLevel("mic", e.level);
+        break;
+      case "wake.score":
+        set({ wakeScore: e.score });
+        break;
+      case "mic.test":
+        set({ micTest: { phase: e.phase, peak: e.peak, detail: e.detail } });
         break;
       case "tts.audio_level":
         setLevel("tts", e.level);

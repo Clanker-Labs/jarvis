@@ -23,6 +23,7 @@ from jarvis_protocol import (
     ListenEnd,
     ListenLevel,
     ListenStart,
+    MicTest,
     NodeCommand,
     NodeConfig,
     PlaybackDone,
@@ -47,6 +48,7 @@ from .audio_io import (
     NoMicrophone,
     Player,
     make_chime,
+    mic_name,
     rms_level,
 )
 from .detect import Endpointer
@@ -56,6 +58,8 @@ log = logging.getLogger(__name__)
 
 PREROLL_CHUNKS = 4  # 320 ms of audio before speech start / wake, so first syllables aren't lost
 LEVEL_EVERY = 1  # send mic level every chunk (80 ms) — the UI smooths it
+MIC_TEST_CHUNKS = round(3.0 * SAMPLE_RATE / CHUNK_SAMPLES)  # 3 s record-and-play-back test
+MIC_TEST_STREAM = 0x7FFF_FFFF  # playback stream id reserved for the test
 
 
 class WakeDetector(Protocol):
@@ -104,6 +108,11 @@ class AudioNode:
         self.muted = False
         # True only while real mic audio is flowing (not merely "arecord started").
         self.mic_ok = False
+        self.mic_device = ""
+        # Mic test: chunks being recorded, and whether the playback is still running. While either
+        # is active, audio skips the wake word (the test phrase may well be "hey Jarvis").
+        self._test_rec: list[bytes] | None = None
+        self._test_task: asyncio.Task[None] | None = None
         self.chime_enabled = settings.chime
         self._next_stream = 1
         self._preroll: deque[bytes] = deque(maxlen=PREROLL_CHUNKS)
@@ -281,10 +290,12 @@ class AudioNode:
                 self.muted = True
                 if self.capture:
                     self._end_capture("cancelled")
-                self.send(StatusUpdate(mic=self.mic_ok, muted=True))
+                self.send(self._status())
             case "unmute":
                 self.muted = False
-                self.send(StatusUpdate(mic=self.mic_ok, muted=False))
+                self.send(self._status())
+            case "mic.test":
+                self.start_mic_test()
 
     def handle_audio(self, frame: bytes) -> None:
         try:
@@ -307,7 +318,9 @@ class AudioNode:
                     if not self.mic_ok:
                         self._set_mic(True)
                         last_error = ""
-                        log.info("microphone streaming")
+                        log.info("microphone streaming: %s", self.mic_device or self.s.input_device)
+                    if self._mic_test_chunk(chunk):
+                        continue
                     try:
                         await self.process_chunk(chunk)
                     except Exception:
@@ -331,7 +344,57 @@ class AudioNode:
     def _set_mic(self, ok: bool) -> None:
         if ok != self.mic_ok:
             self.mic_ok = ok
-            self.send(StatusUpdate(mic=ok, muted=self.muted))
+            self.mic_device = (mic_name() or self.s.input_device) if ok else ""
+            if not ok and self._test_rec is not None:
+                self._test_rec = None
+                self.send(MicTest(phase="failed", detail="the microphone was disconnected"))
+            self.send(self._status())
+
+    def _status(self) -> StatusUpdate:
+        return StatusUpdate(mic=self.mic_ok, mic_device=self.mic_device, muted=self.muted)
+
+    # ------------------------------------------------------------------ mic test
+
+    @property
+    def testing(self) -> bool:
+        return self._test_rec is not None or (
+            self._test_task is not None and not self._test_task.done()
+        )
+
+    def start_mic_test(self) -> None:
+        if not self.mic_ok:
+            self.send(MicTest(phase="failed", detail="no microphone connected"))
+        elif self.capture is not None or self.player.active or self.testing:
+            self.send(MicTest(phase="failed", detail="busy — try again in a moment"))
+        else:
+            self._test_rec = []
+            self.send(MicTest(phase="recording"))
+
+    def _mic_test_chunk(self, pcm: bytes) -> bool:
+        """Feed the test; True if the chunk belongs to it (and must not reach the wake word)."""
+        rec = self._test_rec
+        if rec is None:
+            return self.testing  # playing back: don't let the speaker trigger the wake word
+        rec.append(pcm)
+        self.send(ListenLevel(level=round(rms_level(pcm), 3)))
+        if len(rec) >= MIC_TEST_CHUNKS:
+            self._test_rec = None
+            self._test_task = asyncio.create_task(self._play_test(rec))
+        return True
+
+    async def _play_test(self, rec: list[bytes]) -> None:
+        peak = round(max(rms_level(c) for c in rec), 3)
+        self.send(MicTest(phase="playing", peak=peak))
+        self.player.start(MIC_TEST_STREAM, SAMPLE_RATE)
+        for chunk in rec:
+            self.player.feed(MIC_TEST_STREAM, chunk)
+        self.player.end(MIC_TEST_STREAM)
+        finished = await self.player.wait()
+        self.send(
+            MicTest(phase="done", peak=peak)
+            if finished
+            else MicTest(phase="failed", peak=peak, detail="playback was interrupted")
+        )
 
     async def socket_loop(self) -> None:
         delay = 0.5
@@ -360,7 +423,7 @@ class AudioNode:
                             )
                         )
                     )
-                    await ws.send(dump_event(StatusUpdate(mic=self.mic_ok, muted=self.muted)))
+                    await ws.send(dump_event(self._status()))
                     log.info("connected to brain at %s", self.s.ws_url)
                     self.connected.set()
                     delay = 0.5

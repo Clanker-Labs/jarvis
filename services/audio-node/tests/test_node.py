@@ -224,3 +224,41 @@ async def test_mic_status_follows_real_audio(monkeypatch):
     # unmute reports the real state (no mic yet); then audio flows -> True; unplugged -> False
     assert statuses == [False, True, False]
     assert sleeps[0] == 3.0  # missing hardware is polled quickly
+
+
+def test_mic_name_from_card_table(tmp_path):
+    from jarvis_audio.audio_io import mic_name
+
+    pcm, cards = tmp_path / "pcm", tmp_path / "cards"
+    pcm.write_text("00-00: bcm2835 Headphones : bcm2835 Headphones : playback 8\n")
+    cards.write_text(" 0 [Headphones     ]: bcm2835_headpho - bcm2835 Headphones\n")
+    assert mic_name(pcm, cards) == ""
+    pcm.write_text(pcm.read_text() + "03-00: USB Audio : USB Audio : playback 1 : capture 1\n")
+    cards.write_text(
+        cards.read_text()
+        + "                      bcm2835 Headphones\n"
+        + " 3 [Speakerphone   ]: USB-Audio - Jabra SPEAK 510 USB\n"
+    )
+    assert mic_name(pcm, cards) == "Jabra SPEAK 510 USB"
+    assert mic_name(pcm, tmp_path / "missing") == "USB Audio"
+
+
+async def test_mic_test_records_then_plays_back():
+    from jarvis_audio.node import MIC_TEST_CHUNKS
+    from jarvis_protocol import MicTest
+
+    node, played = make()
+    node.start_mic_test()
+    assert [m.detail for m in drain(node) if isinstance(m, MicTest)] == ["no microphone connected"]
+
+    node.mic_ok = True
+    node.start_mic_test()
+    node.wake.fire = True  # saying "hey Jarvis" during the test must not wake it
+    for _ in range(MIC_TEST_CHUNKS):
+        assert node._mic_test_chunk(SPEECH)
+    assert node.capture is None and node.testing
+    await asyncio.wait_for(node._test_task, 5)
+    phases = [m.phase for m in drain(node) if isinstance(m, MicTest)]
+    assert phases == ["recording", "playing", "done"]
+    assert b"".join(played) == SPEECH * MIC_TEST_CHUNKS
+    assert not node._mic_test_chunk(SILENCE)  # back to normal listening

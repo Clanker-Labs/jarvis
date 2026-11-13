@@ -51,6 +51,7 @@ class StatusTracker:
             "offline_voice": False,
             "muted": False,
         }
+        self.mic_device = ""
         self.weather: Weather | None = None
         self.weather_raw: dict[str, Any] = {}
         self.recent: list[ConversationEntry] = []
@@ -60,10 +61,13 @@ class StatusTracker:
         self._tts_fb = False
 
     def snapshot(self) -> StatusUpdate:
-        return StatusUpdate(**self.flags, weather=self.weather)
+        return StatusUpdate(**self.flags, mic_device=self.mic_device, weather=self.weather)
 
-    def update(self, **flags: bool) -> None:
+    def update(self, *, mic_device: str | None = None, **flags: bool) -> None:
         changed = False
+        if mic_device is not None and mic_device != self.mic_device:
+            self.mic_device = mic_device
+            changed = True
         for k, v in flags.items():
             if self.flags.get(k) != v:
                 self.flags[k] = v

@@ -83,6 +83,7 @@ class StatusUpdate(_Event):
     llm: bool = False
     internet: bool = False
     mic: bool = False
+    mic_device: str = Field(default="", description="Name of the microphone hardware in use")
     offline_voice: bool = Field(default=False, description="STT/TTS fell back to local engines")
     muted: bool = False
     weather: Weather | None = None
@@ -261,6 +262,7 @@ class NodeCommand(_Event):
         "chime",
         "mute",
         "unmute",
+        "mic.test",  # record a few seconds, then play them back (settings panel)
     ]
     timeout_s: float | None = Field(
         default=None, description="listen.open: give up if no speech starts within this window"
@@ -287,11 +289,30 @@ class WakeScore(_Event):
     score: float = Field(ge=0.0, le=1.0)
 
 
+class MicTest(_Event):
+    """Audio node → brain → UI: progress of a record-and-play-back microphone test."""
+
+    type: Literal["mic.test"] = "mic.test"
+    phase: Literal["recording", "playing", "done", "failed"]
+    peak: float = Field(0.0, ge=0.0, le=1.0, description="Loudest level heard while recording")
+    detail: str = ""
+
+
 class UiCommand(_Event):
     """UI → brain (touch interactions)."""
 
     type: Literal["ui.command"] = "ui.command"
-    command: Literal["push_to_talk", "mute", "unmute", "barge_in", "screen_wake"]
+    command: Literal[
+        "push_to_talk",
+        "mute",
+        "unmute",
+        "barge_in",
+        "screen_wake",
+        "mic_test",  # settings panel: record-and-play-back test
+        "speaker_test",  # settings panel: play the chime
+        "monitor_on",  # settings panel open: stream mic levels while idle
+        "monitor_off",
+    ]
 
 
 class ConversationEntry(BaseModel):
@@ -368,6 +389,7 @@ Event = Annotated[
     | NodeCommand
     | NodeConfig
     | WakeScore
+    | MicTest
     | UiCommand
     | UiSnapshot,
     Field(discriminator="type"),
@@ -410,6 +432,7 @@ __all__ = [
     "ListenLevel",
     "ListenPartial",
     "ListenStart",
+    "MicTest",
     "NodeCommand",
     "NodeConfig",
     "NowCard",

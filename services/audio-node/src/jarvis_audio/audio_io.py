@@ -55,6 +55,26 @@ def capture_devices(pcm_table: Path = Path("/proc/asound/pcm")) -> list[str]:
     return [ln.strip() for ln in lines if "capture" in ln]
 
 
+def mic_name(
+    pcm_table: Path = Path("/proc/asound/pcm"), cards: Path = Path("/proc/asound/cards")
+) -> str:
+    """Human name of the first capture card, e.g. ``'Jabra SPEAK 510 USB'`` ('' if none)."""
+    devs = capture_devices(pcm_table)
+    if not devs:
+        return ""
+    card = devs[0].split("-", 1)[0].lstrip("0") or "0"
+    try:
+        for ln in cards.read_text().splitlines():
+            # " 3 [Speakerphone   ]: USB-Audio - Jabra SPEAK 510 USB"
+            head, _, rest = ln.partition("]:")
+            if head.strip().split(" ", 1)[0] == card and " - " in rest:
+                return rest.split(" - ", 1)[1].strip()
+    except OSError:
+        pass
+    parts = [p.strip() for p in devs[0].split(":")]
+    return parts[1] if len(parts) > 1 else devs[0]
+
+
 class Mic(Protocol):
     def chunks(self) -> AsyncIterator[bytes]: ...
     async def close(self) -> None: ...

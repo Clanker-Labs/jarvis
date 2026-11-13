@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CoreView } from "./core/CoreView";
+import { SettingsPanel } from "./hud/SettingsPanel";
 import { TopBar } from "./hud/TopBar";
 import { Transcript } from "./hud/Transcript";
 import { NowCard, RecentCard } from "./hud/SideCards";
@@ -18,6 +19,8 @@ export function App() {
   const lastInteraction = useUi((s) => s.lastInteraction);
   const connected = useUi((s) => s.connected);
   const [cardsHidden, setCardsHidden] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
   const night =
     NIGHT_OVERRIDE != null ? NIGHT_OVERRIDE === "1" : inWindow(now, config.night_start, config.night_end);
@@ -52,7 +55,7 @@ export function App() {
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
     >
-      <TopBar />
+      <TopBar onSettings={() => setSettingsOpen(true)} />
       <div className="relative flex flex-1 items-center justify-center">
         <aside
           className={`absolute left-10 transition-all duration-700 ease-out ${
@@ -78,6 +81,7 @@ export function App() {
           connecting to brain…
         </div>
       )}
+      {settingsOpen && <SettingsPanel onClose={closeSettings} />}
       {/* Night dim and screen sleep are a single cheap overlay (no CSS filters on the canvas). */}
       <div
         className="pointer-events-none absolute inset-0 bg-black transition-opacity duration-[1500ms]"

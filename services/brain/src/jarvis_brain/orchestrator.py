@@ -11,7 +11,7 @@ import contextlib
 import logging
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -27,6 +27,7 @@ from jarvis_protocol import (
     ListenLevel,
     ListenPartial,
     ListenStart,
+    MicTest,
     NodeCommand,
     PlaybackDone,
     State,
@@ -38,6 +39,7 @@ from jarvis_protocol import (
     UiConfig,
     UiSnapshot,
     WakeDetected,
+    WakeScore,
 )
 
 from .bus import EventBus
@@ -109,6 +111,8 @@ class Orchestrator:
         self.responder = responder
         self.status = status
         self.sm = StateMachine()
+        # Turns the node's continuous mic meter on/off (set by the runtime; the kiosk settings panel).
+        self.on_monitor: Callable[[bool], Awaitable[None]] | None = None
         self.sm.subscribe(self._on_transition)
         self.capture: ChainSession | None = None
         self.capture_id: str | None = None
@@ -178,7 +182,9 @@ class Orchestrator:
                 if ev.stream_id == self._awaiting_stream:
                     self._playback_done.set()
             case StatusUpdate():
-                self.status.update(mic=ev.mic, muted=ev.muted)
+                self.status.update(mic=ev.mic, muted=ev.muted, mic_device=ev.mic_device)
+            case WakeScore() | MicTest():
+                self.bus.publish(ev)  # mic meter / mic test, shown by the admin and the kiosk
             case _:
                 log.debug("ignored node event %s", ev.type)
 
@@ -243,6 +249,14 @@ class Orchestrator:
                 self.status.update(muted=cmd.command == "mute")
             case "screen_wake":
                 pass
+            case "mic_test":
+                if not await self.hub.to_node(NodeCommand(command="mic.test")):
+                    self.bus.publish(MicTest(phase="failed", detail="the audio node isn't running"))
+            case "speaker_test":
+                await self.hub.to_node(NodeCommand(command="chime"))
+            case "monitor_on" | "monitor_off":
+                if self.on_monitor:
+                    await self.on_monitor(cmd.command == "monitor_on")
 
     # ------------------------------------------------------------------ turns
 

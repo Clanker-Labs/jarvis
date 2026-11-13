@@ -1,4 +1,4 @@
-import { Cloud, CloudLightning, CloudRain, CloudSnow, CloudFog, Sun, MicOff } from "lucide-react";
+import { Cloud, CloudLightning, CloudRain, CloudSnow, CloudFog, Sun, MicOff, Settings } from "lucide-react";
 import { useClock, useTick } from "../lib/hooks";
 import { useUi } from "../lib/store";
 
@@ -17,7 +17,7 @@ function Dot({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-export function TopBar() {
+export function TopBar({ onSettings }: { onSettings: () => void }) {
   const now = useClock();
   const connected = useUi((s) => s.connected);
   const status = useUi((s) => s.status);
@@ -66,6 +66,14 @@ export function TopBar() {
           <Dot ok={connected && status.llm} label="llm" />
           <Dot ok={connected && status.internet} label="net" />
           <Dot ok={connected && status.mic && !status.muted} label="mic" />
+          <button
+            type="button"
+            aria-label="Settings"
+            className="-my-2 -mr-2 rounded-full p-2 text-white/35 transition-colors active:bg-white/10 active:text-white/80"
+            onClick={onSettings}
+          >
+            <Settings className="h-[18px] w-[18px]" strokeWidth={1.5} />
+          </button>
         </div>
       </div>
     </header>

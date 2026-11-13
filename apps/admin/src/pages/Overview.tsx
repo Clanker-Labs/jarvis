@@ -80,7 +80,7 @@ function HealthTiles({ data }: { data: OverviewData }) {
       <Tile label="UI clients" ok={sv.ui_clients > 0} value={String(sv.ui_clients)} />
       <Tile label="LLM" ok={st.llm} value={st.llm ? "Reachable" : "Unavailable"} />
       <Tile label="Internet" ok={st.internet} value={st.internet ? "Online" : "Offline"} />
-      <Tile label="Mic" ok={st.mic} value={st.mic ? "Live" : "Off"} />
+      <Tile label="Mic" ok={st.mic} value={st.mic ? st.mic_device || "Live" : "Not connected"} />
       <Tile label="Muted" ok={!st.muted} value={st.muted ? "Muted" : "No"} warn={st.muted} />
       <Tile label="Voice" ok={!st.offline_voice} value={st.offline_voice ? "Offline fallback" : "Primary engines"} warn={st.offline_voice} />
     </div>

@@ -28,6 +28,7 @@ export type JarvisEvent =
   | NodeCommand
   | NodeConfig
   | WakeScore
+  | MicTest
   | UiCommand
   | UiSnapshot;
 export type State =
@@ -67,6 +68,10 @@ export interface StatusUpdate {
   internet: boolean;
   llm: boolean;
   mic: boolean;
+  /**
+   * Name of the microphone hardware in use
+   */
+  mic_device: string;
   muted: boolean;
   /**
    * STT/TTS fell back to local engines
@@ -492,7 +497,8 @@ export interface BargeIn {
  * Brain → audio node.
  */
 export interface NodeCommand {
-  command: "listen.open" | "listen.cancel" | "playback.stop" | "chime" | "mute" | "unmute";
+  command:
+    "listen.open" | "listen.cancel" | "playback.stop" | "chime" | "mute" | "unmute" | "mic.test";
   follow_up: boolean;
   /**
    * Unique event id
@@ -555,10 +561,43 @@ export interface WakeScore {
   type: "wake.score";
 }
 /**
+ * Audio node → brain → UI: progress of a record-and-play-back microphone test.
+ */
+export interface MicTest {
+  detail: string;
+  /**
+   * Unique event id
+   */
+  id: string;
+  /**
+   * Loudest level heard while recording
+   */
+  peak: number;
+  phase: "recording" | "playing" | "done" | "failed";
+  /**
+   * Unix time (seconds) at creation
+   */
+  ts: number;
+  /**
+   * Conversation turn this event belongs to
+   */
+  turn_id: string | null;
+  type: "mic.test";
+}
+/**
  * UI → brain (touch interactions).
  */
 export interface UiCommand {
-  command: "push_to_talk" | "mute" | "unmute" | "barge_in" | "screen_wake";
+  command:
+    | "push_to_talk"
+    | "mute"
+    | "unmute"
+    | "barge_in"
+    | "screen_wake"
+    | "mic_test"
+    | "speaker_test"
+    | "monitor_on"
+    | "monitor_off";
   /**
    * Unique event id
    */

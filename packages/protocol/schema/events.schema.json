@@ -792,6 +792,68 @@
       "title": "ListenStart",
       "type": "object"
     },
+    "MicTest": {
+      "additionalProperties": false,
+      "description": "Audio node \u2192 brain \u2192 UI: progress of a record-and-play-back microphone test.",
+      "properties": {
+        "detail": {
+          "default": "",
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique event id",
+          "type": "string"
+        },
+        "peak": {
+          "default": 0.0,
+          "description": "Loudest level heard while recording",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "phase": {
+          "enum": [
+            "recording",
+            "playing",
+            "done",
+            "failed"
+          ],
+          "type": "string"
+        },
+        "ts": {
+          "description": "Unix time (seconds) at creation",
+          "type": "number"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation turn this event belongs to"
+        },
+        "type": {
+          "const": "mic.test",
+          "default": "mic.test",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "turn_id",
+        "type",
+        "phase",
+        "peak",
+        "detail"
+      ],
+      "title": "MicTest",
+      "type": "object"
+    },
     "NodeCommand": {
       "additionalProperties": false,
       "description": "Brain \u2192 audio node.",
@@ -803,7 +865,8 @@
             "playback.stop",
             "chime",
             "mute",
-            "unmute"
+            "unmute",
+            "mic.test"
           ],
           "type": "string"
         },
@@ -1135,6 +1198,11 @@
           "default": false,
           "type": "boolean"
         },
+        "mic_device": {
+          "default": "",
+          "description": "Name of the microphone hardware in use",
+          "type": "string"
+        },
         "muted": {
           "default": false,
           "type": "boolean"
@@ -1186,6 +1254,7 @@
         "llm",
         "internet",
         "mic",
+        "mic_device",
         "offline_voice",
         "muted",
         "weather"
@@ -1394,7 +1463,11 @@
             "mute",
             "unmute",
             "barge_in",
-            "screen_wake"
+            "screen_wake",
+            "mic_test",
+            "speaker_test",
+            "monitor_on",
+            "monitor_off"
           ],
           "type": "string"
         },
@@ -1693,6 +1766,7 @@
       "listen.level": "#/definitions/ListenLevel",
       "listen.partial": "#/definitions/ListenPartial",
       "listen.start": "#/definitions/ListenStart",
+      "mic.test": "#/definitions/MicTest",
       "node.command": "#/definitions/NodeCommand",
       "node.config": "#/definitions/NodeConfig",
       "playback.done": "#/definitions/PlaybackDone",
@@ -1787,6 +1861,9 @@
     },
     {
       "$ref": "#/definitions/WakeScore"
+    },
+    {
+      "$ref": "#/definitions/MicTest"
     },
     {
       "$ref": "#/definitions/UiCommand"

@@ -40,3 +40,21 @@ describe("ui store", () => {
     expect(useUi.getState().bgTask?.done).toBe(true);
   });
 });
+
+describe("settings panel state", () => {
+  it("tracks the mic device, wake score and mic test", () => {
+    const s = useUi.getState();
+    s.apply(
+      makeEvent("status.update", {
+        brain: true, llm: true, internet: true, mic: true, mic_device: "Jabra SPEAK 510 USB",
+        offline_voice: false, muted: false, weather: null,
+      }),
+    );
+    s.apply(makeEvent("wake.score", { score: 0.8 }));
+    s.apply(makeEvent("mic.test", { phase: "done", peak: 0.4, detail: "" }));
+    const st = useUi.getState();
+    expect(st.status.micDevice).toBe("Jabra SPEAK 510 USB");
+    expect(st.wakeScore).toBe(0.8);
+    expect(st.micTest).toEqual({ phase: "done", peak: 0.4, detail: "" });
+  });
+});
