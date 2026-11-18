@@ -349,6 +349,11 @@ class ChainSession:
         await self._drop_stream()
 
 
+# Engines that run on hardware we control (the Pi, or a box on the tailnet). Speech that nobody
+# has addressed to Jarvis yet (conversation mode) is only ever transcribed by these.
+SELF_HOSTED_STT = frozenset({"whisper_local", "whisper_remote"})
+
+
 class STTChain:
     def __init__(self, engines: dict[str, STTEngine], cfg: Callable[[], VoiceConfig]) -> None:
         self.engines = engines
@@ -361,5 +366,8 @@ class STTChain:
             if e in self.engines and self.engines[e].available()
         ]
 
-    def open(self, on_partial: PartialCb) -> ChainSession:
-        return ChainSession(self.active(), on_partial)
+    def open(self, on_partial: PartialCb, *, self_hosted_only: bool = False) -> ChainSession:
+        engines = self.active()
+        if self_hosted_only:
+            engines = [e for e in engines if e.id in SELF_HOSTED_STT]
+        return ChainSession(engines, on_partial)

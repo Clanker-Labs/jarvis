@@ -152,6 +152,7 @@ export interface WakeDetected {
   type: "wake.detected";
 }
 export interface ListenStart {
+  ambient: boolean;
   follow_up: boolean;
   /**
    * Unique event id
@@ -528,6 +529,7 @@ export interface NodeConfig {
    */
   id: string;
   max_utterance_s: number;
+  mode: "conversation" | "wake_word";
   monitor: boolean;
   /**
    * Unix time (seconds) at creation

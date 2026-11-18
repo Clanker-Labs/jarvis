@@ -48,6 +48,12 @@ class VoiceConfig(Section):
     elevenlabs_model: str = "eleven_flash_v2_5"
     piper_voice: str = "en_GB-alan-medium"
 
+    # "conversation": always listening; answers when addressed by name, and to follow-ups for
+    # `conversation_window_s` after it last spoke. "wake_word": only after "Hey Jarvis" or a tap.
+    listen_mode: Literal["conversation", "wake_word"] = "conversation"
+    conversation_window_s: float = Field(40.0, ge=5, le=300)
+    # Words that mean "this is for Jarvis" (whisper's usual mishearings included).
+    addressed_names: list[str] = ["jarvis", "jarvus", "jarvas", "jervis", "javis"]
     follow_up_s: float = Field(8.0, ge=0, le=30)
     vad_end_silence_ms: int = Field(700, ge=200, le=3000)
     max_utterance_s: float = Field(30.0, ge=3, le=120)

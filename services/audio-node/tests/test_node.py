@@ -43,7 +43,7 @@ class FakeVad:
         pass
 
 
-def make():
+def make(mode="wake_word"):
     s = NodeSettings(VAD_END_SILENCE_MS=240, WAKE_CHIME=False)
     played = []
     node = AudioNode(
@@ -54,6 +54,7 @@ def make():
         player=Player(lead_ms=50, sink=lambda pcm, r: played.append(pcm)),
     )
     node.ws = object()  # pretend connected; outgoing messages land in node._send_q
+    node.mode = mode
     return node, played
 
 
@@ -148,7 +149,9 @@ async def test_node_config_and_monitor():
     node.wake.threshold = 0.5
     node.wake.last_score = 0.42
     await node.handle_event(
-        NodeConfig(wake_threshold=0.7, chime=False, vad_end_silence_ms=500, monitor=True)
+        NodeConfig(
+            wake_threshold=0.7, chime=False, vad_end_silence_ms=500, monitor=True, mode="wake_word"
+        )
     )
     assert node.wake.threshold == 0.7 and node.s.end_silence_ms == 500 and node.monitor
     for _ in range(6):
@@ -266,3 +269,82 @@ async def test_mic_test_records_then_plays_back():
     assert phases == ["recording", "playing", "done"]
     assert b"".join(played) == SPEECH * MIC_TEST_CHUNKS
     assert not node._mic_test_chunk(SILENCE)  # back to normal listening
+
+
+# ---------------------------------------------------------------------- conversation mode
+
+
+async def test_conversation_mode_captures_speech_without_wake_word():
+    node, _ = make(mode="conversation")
+    for _ in range(3):
+        await node.process_chunk(SILENCE)
+    assert not drain(node)  # silence: nothing is sent, the idle capture just waits
+    for chunk in [SPEECH] * 4 + [SILENCE] * 4:
+        await node.process_chunk(chunk)
+    msgs = drain(node)
+    start = next(m for m in msgs if isinstance(m, ListenStart))
+    assert start.ambient and not start.follow_up
+    assert any(isinstance(m, tuple) for m in msgs)  # pre-roll + speech audio
+    assert isinstance(msgs[-1], ListenEnd) and msgs[-1].reason == "silence"
+    await node.process_chunk(SILENCE)
+    assert node.capture is not None and node.capture.ambient  # ready for the next utterance
+
+
+async def test_conversation_mode_wake_word_takes_over():
+    node, _ = make(mode="conversation")
+    await node.process_chunk(SILENCE)
+    node.wake.fire = True
+    await node.process_chunk(SPEECH)
+    msgs = drain(node)
+    assert isinstance(msgs[0], WakeDetected)
+    start = next(m for m in msgs if isinstance(m, ListenStart))
+    assert not start.ambient
+
+
+async def test_conversation_mode_ignores_own_voice_and_mute():
+    node, _ = make(mode="conversation")
+    await node.handle_event(TtsStart(stream_id=5, sample_rate=16000))
+    node.handle_audio(b"\x05\x00\x00\x00" + b"\x01\x00" * 16000)
+    await asyncio.sleep(0.02)
+    for _ in range(4):
+        await node.process_chunk(SPEECH)  # Jarvis talking: not an utterance
+    assert not any(isinstance(m, ListenStart) for m in drain(node))
+    node.player.stop()
+    await node.handle_event(NodeCommand(command="mute"))
+    drain(node)
+    for _ in range(4):
+        await node.process_chunk(SPEECH)
+    assert not any(isinstance(m, ListenStart) for m in drain(node))
+
+
+async def test_tap_replaces_idle_capture():
+    node, _ = make(mode="conversation")
+    await node.process_chunk(SILENCE)
+    await node.handle_event(NodeCommand(command="listen.open"))
+    msgs = drain(node)
+    start = next(m for m in msgs if isinstance(m, ListenStart))
+    assert not start.ambient and node.capture is not None and not node.capture.ambient
+
+
+def test_ensure_audible_only_fixes_silent_usb_speakers(tmp_path, monkeypatch):
+    from jarvis_audio.audio_io import ensure_audible
+
+    (tmp_path / "pcm").write_text(
+        "00-00: bcm2835 Headphones : bcm2835 Headphones : playback 8\n"
+        "03-00: USB Audio : USB Audio : playback 1 : capture 1\n"
+    )
+    monkeypatch.setenv("ASOUND_DIR", str(tmp_path))
+    calls = []
+    levels = {"PCM": "  Mono: Playback 0 [0%] [0.00dB] [on]"}
+
+    def run(cmd):
+        calls.append(cmd)
+        return levels.get(cmd[-1], "") if "sget" in cmd else ""
+
+    assert ensure_audible(run) == ["card 3 PCM → 60%"]
+    assert any("sset" in c and "60%" in c for c in calls)
+    assert all(c[c.index("-c") + 1] == "3" for c in calls)  # never touches the built-in jack
+
+    calls.clear()
+    levels["PCM"] = "  Mono: Playback 25 [25%] [-8.00dB] [on]"  # low but deliberate
+    assert ensure_audible(run) == [] and not any("sset" in c for c in calls)

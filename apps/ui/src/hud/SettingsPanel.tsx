@@ -143,7 +143,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
           <span className="tabular-nums">Wake word {Math.round(wakeScore * 100)}%</span>
         </div>
         <LevelMeter />
-        <p className="mt-2 text-[12px] text-white/55">Say “Hey Jarvis” — the wake-word score should jump.</p>
+        <p className="mt-2 text-[12px] text-white/55">Speak and the bar should move. “Hey Jarvis” also lifts the wake-word score.</p>
 
         <div className="mt-5 flex gap-3">
           <button

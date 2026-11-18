@@ -1,4 +1,5 @@
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
@@ -74,23 +75,34 @@ class FakeTTS:
             yield b"\x01\x00" * 1600
 
 
-def make(stt_text="hello there", tts_delay=0.0):
+def make(stt_text="hello there", tts_delay=0.0, mode="wake_word", responder=None):
     db = Database(":memory:")
     cfg = ConfigStore(db)
-    cfg.update("voice", {"stt_chain": ["fake"], "tts_chain": ["fake"], "follow_up_s": 8})
+    cfg.update(
+        "voice",
+        {
+            "stt_chain": ["whisper_local"],
+            "tts_chain": ["fake"],
+            "follow_up_s": 8,
+            "listen_mode": mode,
+        },
+    )
     bus = EventBus()
     hub = FakeHub()
-    stt = STTChain({"fake": FakeSTT(stt_text)}, lambda: cfg.voice)
+    # Named like the self-hosted engine so overheard (ambient) speech may use it.
+    stt = STTChain({"whisper_local": FakeSTT(stt_text, id="whisper_local")}, lambda: cfg.voice)
     tts = TTSChain({"fake": FakeTTS(tts_delay)}, lambda: cfg.voice)
     status = StatusTracker(bus, cfg)
-    orch = Orchestrator(bus, hub, cfg, stt, Speaker(bus, hub, tts), EchoResponder(), status)
+    orch = Orchestrator(
+        bus, hub, cfg, stt, Speaker(bus, hub, tts), responder or EchoResponder(), status
+    )
     states = []
     orch.sm.subscribe(lambda a, b, r: states.append(b))
     return orch, hub, states
 
 
-async def utterance(orch, sid="1", seconds=1.0):
-    await orch.on_node_event(ListenStart(turn_id=sid))
+async def utterance(orch, sid="1", seconds=1.0, ambient=False):
+    await orch.on_node_event(ListenStart(turn_id=sid, ambient=ambient))
     await orch.on_node_audio(int(sid), b"\x00\x01" * int(16000 * seconds))
     await orch.on_node_event(ListenEnd(reason="silence", turn_id=sid))
 
@@ -198,3 +210,89 @@ async def test_node_status_carries_mic_device():
     await orch.on_node_event(StatusUpdate(mic=True, mic_device="Jabra SPEAK 510 USB"))
     snap = orch.status.snapshot()
     assert snap.mic and snap.mic_device == "Jabra SPEAK 510 USB"
+
+
+# ---------------------------------------------------------------------- conversation mode
+
+
+class IgnoringResponder:
+    async def respond(self, turn, ctx):
+        turn.provider = "test"
+        yield "<ign"
+        yield "ore>"
+
+
+async def _played(orch, hub):
+    await wait_for(lambda: any(isinstance(e, TtsEnd) for e in hub.sent))
+    start = [e for e in hub.sent if isinstance(e, TtsStart)][-1]
+    await orch.on_node_event(PlaybackDone(stream_id=start.stream_id))
+
+
+async def test_overheard_speech_without_name_is_dropped():
+    from jarvis_protocol import ListenFinal
+
+    orch, hub, states = make(stt_text="did you feed the cat", mode="conversation")
+    with orch.bus.subscription() as sub:
+        await utterance(orch, ambient=True)
+        await asyncio.sleep(0.1)
+        seen = []
+        while not sub.queue.empty():
+            seen.append(sub.queue.get_nowait())
+    assert not any(isinstance(e, TtsStart) for e in hub.sent)
+    assert not any(isinstance(e, ListenFinal | ListenStart) for e in seen)  # never shown
+    assert states == [] and orch.sm.state is State.IDLE
+    assert orch.status.recent == []
+
+
+async def test_named_utterance_is_answered_then_conversation_stays_open():
+    orch, hub, states = make(stt_text="Jarvis, what time is it?", mode="conversation")
+    await utterance(orch, ambient=True)
+    await _played(orch, hub)
+    await wait_for(lambda: orch.sm.state is State.FOLLOW_UP)
+    # Silent transcription first (no LISTENING), then the answer.
+    assert states[:3] == [State.THINKING, State.SPEAKING, State.FOLLOW_UP]
+    assert orch.engaged
+    assert not any(c.command == "listen.open" for c in hub.commands())  # node listens anyway
+
+    # A follow-up without the name, inside the window, is answered too.
+    orch.stt.engines["whisper_local"].text = "and tomorrow?"
+    await utterance(orch, sid="2", ambient=True)
+    await wait_for(lambda: len([e for e in hub.sent if isinstance(e, TtsStart)]) == 2)
+    assert orch.turn.may_ignore
+
+
+async def test_model_can_decline_unnamed_speech_in_window():
+    orch, hub, _ = make(
+        stt_text="pass the salt", mode="conversation", responder=IgnoringResponder()
+    )
+    orch.engaged_until = time.time() + 30
+    await utterance(orch, ambient=True)
+    await wait_for(lambda: orch.turn_task is not None and orch.turn_task.done())
+    assert not any(isinstance(e, TtsStart) for e in hub.sent)
+    assert orch.turn.ignored and orch.sm.state is State.FOLLOW_UP
+    assert orch.status.recent == []
+
+
+async def test_overheard_speech_never_uses_cloud_stt():
+    cfg = ConfigStore(Database(":memory:"))
+    cfg.update("voice", {"stt_chain": ["deepgram", "whisper_local"]})
+    chain = STTChain(
+        {"deepgram": FakeSTT(id="deepgram"), "whisper_local": FakeSTT(id="whisper_local")},
+        lambda: cfg.voice,
+    )
+
+    async def noop(_):
+        pass
+
+    assert [e.id for e in chain.open(noop).engines] == ["deepgram", "whisper_local"]
+    assert [e.id for e in chain.open(noop, self_hosted_only=True).engines] == ["whisper_local"]
+
+
+def test_addressed_by_name():
+    from jarvis_brain.orchestrator import addressed_by_name
+
+    names = ["jarvis", "jervis"]
+    assert addressed_by_name("Jarvis, lights off", names)
+    assert addressed_by_name("what do you think, jervis?", names)
+    assert not addressed_by_name("Jarvistown is lovely", names)
+    assert not addressed_by_name("see you at nine", names)

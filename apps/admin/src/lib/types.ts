@@ -147,6 +147,9 @@ export interface VoiceConfig {
   elevenlabs_voice_id: string;
   elevenlabs_model: string;
   piper_voice: string;
+  listen_mode: "conversation" | "wake_word";
+  conversation_window_s: number;
+  addressed_names: string[];
   follow_up_s: number;
   vad_end_silence_ms: number;
   max_utterance_s: number;

@@ -116,6 +116,9 @@ class WakeDetected(_Event):
 class ListenStart(_Event):
     type: Literal["listen.start"] = "listen.start"
     follow_up: bool = False
+    # Opened by the node on its own (conversation mode), not by a wake word, tap or follow-up:
+    # nobody has said this is for Jarvis yet, so the brain decides after transcribing.
+    ambient: bool = False
 
 
 class ListenLevel(_Event):
@@ -280,6 +283,9 @@ class NodeConfig(_Event):
     max_utterance_s: float = Field(30.0, ge=3, le=120)
     # Admin mic meter: stream mic levels (and wake scores) continuously, not only while listening.
     monitor: bool = False
+    # "conversation": capture every utterance (the brain decides whether it was meant for Jarvis);
+    # "wake_word": only listen after "Hey Jarvis" (or a tap / follow-up window).
+    mode: Literal["conversation", "wake_word"] = "conversation"
 
 
 class WakeScore(_Event):

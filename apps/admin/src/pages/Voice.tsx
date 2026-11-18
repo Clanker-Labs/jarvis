@@ -263,9 +263,31 @@ function ListeningCard({ d, set, fieldIssues }: { d: VoiceConfig; set: SetFn; fi
   return (
     <Card title="Listening">
       <div className="grid gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
-        <Field label="Follow-up window" hint="Listen again without the wake word (0 = off)." errors={fieldIssues("follow_up_s")}>
-          {(id) => <Slider id={id} min={0} max={30} step={0.5} value={d.follow_up_s} onChange={(v) => set("follow_up_s", v)} format={(v) => `${v} s`} />}
+        <Field
+          label="Mode"
+          hint={
+            d.listen_mode === "conversation"
+              ? "Always listening; answers when called by name, and to follow-ups. Unaddressed speech is transcribed on your own hardware only, then discarded."
+              : "Listens only after “Hey Jarvis” or a tap."
+          }
+          errors={fieldIssues("listen_mode")}
+        >
+          {(id) => (
+            <Select id={id} value={d.listen_mode} onChange={(e) => set("listen_mode", e.target.value as VoiceConfig["listen_mode"])}>
+              <option value="conversation">Conversation (no wake word)</option>
+              <option value="wake_word">Wake word</option>
+            </Select>
+          )}
         </Field>
+        {d.listen_mode === "conversation" ? (
+          <Field label="Conversation window" hint="After Jarvis speaks, replies without its name still count for this long." errors={fieldIssues("conversation_window_s")}>
+            {(id) => <Slider id={id} min={5} max={300} step={5} value={d.conversation_window_s} onChange={(v) => set("conversation_window_s", v)} format={(v) => `${v} s`} />}
+          </Field>
+        ) : (
+          <Field label="Follow-up window" hint="Listen again without the wake word (0 = off)." errors={fieldIssues("follow_up_s")}>
+            {(id) => <Slider id={id} min={0} max={30} step={0.5} value={d.follow_up_s} onChange={(v) => set("follow_up_s", v)} format={(v) => `${v} s`} />}
+          </Field>
+        )}
         <Field label="End-of-speech silence" hint="Silence that ends an utterance." errors={fieldIssues("vad_end_silence_ms")}>
           {(id) => <Slider id={id} min={200} max={3000} step={50} value={d.vad_end_silence_ms} onChange={(v) => set("vad_end_silence_ms", v)} format={(v) => `${v} ms`} />}
         </Field>

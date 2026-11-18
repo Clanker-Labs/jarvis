@@ -56,7 +56,7 @@ export function RecentCard() {
   return (
     <Card title="Recent" side="right" icon={<MessagesSquare className="h-3.5 w-3.5" strokeWidth={1.5} />}>
       {recent.length === 0 ? (
-        <p className="text-[14px] font-light text-white/35">Say “Hey Jarvis”</p>
+        <p className="text-[14px] font-light text-white/35">Just talk — say “Jarvis” to get my attention</p>
       ) : (
         <ul className="space-y-3">
           {recent.slice(0, 3).map((r) => (

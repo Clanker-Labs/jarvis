@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -68,9 +69,26 @@ class Turn:
     cost_usd: float = 0.0
     tool_calls: list[dict] = field(default_factory=list)
     error: str = ""
+    # Conversation mode: overheard (nobody said it was for Jarvis) …
+    ambient: bool = False
+    # … and not shown on screen unless it turns out to be addressed.
+    quiet: bool = False
+    # Heard during an ongoing conversation without the name: the model may decline to answer.
+    may_ignore: bool = False
+    ignored: bool = False  # the model said it wasn't meant for it
 
     def mark(self, name: str) -> None:
         self.timings.setdefault(name, time.time())
+
+
+# The model's way of saying "that wasn't meant for me" (conversation mode, see Turn.may_ignore).
+IGNORE_MARKER = "<ignore>"
+
+
+def addressed_by_name(text: str, names: list[str]) -> bool:
+    """True if the utterance names Jarvis (any configured spelling, as a whole word)."""
+    words = set(re.findall(r"[a-z']+", text.lower()))
+    return any(n.lower() in words for n in names)
 
 
 class TurnContext(Protocol):
@@ -123,6 +141,9 @@ class Orchestrator:
         self._error_timer: asyncio.TimerHandle | None = None
         self._wake_at: float | None = None
         self.on_turn_done: list[Callable[[Turn], None]] = []
+        # Conversation mode: until when un-named speech still counts as talking to Jarvis.
+        self.engaged_until = 0.0
+        self._engage_timer: asyncio.TimerHandle | None = None
 
     # ------------------------------------------------------------------ state
 
@@ -192,12 +213,23 @@ class Orchestrator:
         if self.capture is not None and str(stream_id) == self.capture_id:
             await self.capture.feed(pcm)
 
+    @property
+    def engaged(self) -> bool:
+        return time.time() < self.engaged_until
+
     async def _open_capture(self, ev: ListenStart) -> None:
+        if ev.ambient and self.sm.busy:
+            # Overheard while Jarvis is thinking/speaking: never interrupts (say its name, or the
+            # wake word, to barge in). The audio for this capture is simply not collected.
+            return
         if self.sm.busy:
             await self._interrupt("new utterance")
         if self.capture:
             await self.capture.aclose()
-        self.turn = Turn(id=uuid.uuid4().hex[:12], follow_up=ev.follow_up)
+        quiet = ev.ambient and not self.engaged
+        self.turn = Turn(
+            id=uuid.uuid4().hex[:12], follow_up=ev.follow_up, ambient=ev.ambient, quiet=quiet
+        )
         if self._wake_at and time.time() - self._wake_at < 3:
             self.turn.timings["wake"] = self._wake_at
         self._wake_at = None
@@ -208,10 +240,14 @@ class Orchestrator:
         async def partial(text: str) -> None:
             if self.turn and self.turn.id == turn_id:
                 self.turn.mark("first_partial")
-                self.bus.publish(ListenPartial(text=text, turn_id=turn_id))
+                if not self.turn.quiet:
+                    self.bus.publish(ListenPartial(text=text, turn_id=turn_id))
 
-        self.capture = self.stt.open(partial)
-        self.bus.publish(ListenStart(follow_up=ev.follow_up, turn_id=turn_id))
+        # Un-addressed speech stays on hardware we control (never a cloud STT).
+        self.capture = self.stt.open(partial, self_hosted_only=ev.ambient)
+        if quiet:
+            return  # transcribe silently; shown only if it turns out to be for Jarvis
+        self.bus.publish(ListenStart(follow_up=ev.follow_up, ambient=ev.ambient, turn_id=turn_id))
         self.go(S.LISTENING, "follow-up" if ev.follow_up else "listening")
 
     async def _close_capture(self, ev: ListenEnd) -> None:
@@ -279,6 +315,8 @@ class Orchestrator:
             turn.mark("stt_final")
             self.status.voice_used(stt_fallback=result.fallback)
             text = result.text.strip()
+            if turn.ambient and not self._accept_overheard(turn, text):
+                return
             self.bus.publish(ListenFinal(text=text, stt_provider=result.engine, turn_id=turn.id))
             if not text:
                 self.go(S.IDLE, "nothing heard")
@@ -296,13 +334,59 @@ class Orchestrator:
             self._finish(turn, error=str(e))
             self._error("turn_failed", str(e))
 
+    def _accept_overheard(self, turn: Turn, text: str) -> bool:
+        """Conversation mode: was this overheard utterance meant for Jarvis?
+
+        Named ("Jarvis, …") → yes. Within the conversation window → probably; the model gets the
+        last word (IGNORE_MARKER). Otherwise it is someone else's conversation: dropped without a
+        trace (not shown, not stored, not sent anywhere)."""
+        named = addressed_by_name(text, self.config.voice.addressed_names)
+        started = turn.timings.get("listen_start", time.time())
+        in_window = started < self.engaged_until
+        if not text or not (named or in_window):
+            log.debug("overheard speech ignored (not addressed to Jarvis)")
+            if not turn.quiet:
+                self.go(S.FOLLOW_UP if self.engaged else S.IDLE, "not addressed")
+            return False
+        turn.may_ignore = not named
+        turn.quiet = False
+        self._cancel_engage_timer()
+        return True
+
     async def _respond_and_speak(self, turn: Turn) -> None:
         splitter = SentenceSplitter()
         parts: list[str] = []
         ctx = _Ctx(self, turn)
 
+        async def replies() -> AsyncIterator[str]:
+            """The responder's deltas, minus a leading IGNORE_MARKER (which ends the turn)."""
+            stream = self.responder.respond(turn, ctx)
+            if not turn.may_ignore:
+                async for delta in stream:
+                    yield delta
+                return
+            head = ""
+            async for delta in stream:
+                head += delta
+                probe = head.lstrip()
+                if len(probe) < len(IGNORE_MARKER) and IGNORE_MARKER.startswith(probe):
+                    continue  # could still be the token: keep buffering
+                if probe.startswith(IGNORE_MARKER):
+                    turn.ignored = True
+                    return
+                yield head
+                break
+            else:
+                if head.strip() and not IGNORE_MARKER.startswith(head.strip()):
+                    yield head
+                elif head.strip():
+                    turn.ignored = True
+                return
+            async for delta in stream:
+                yield delta
+
         async def sentences() -> AsyncIterator[str]:
-            async for delta in self.responder.respond(turn, ctx):
+            async for delta in replies():
                 if not delta:
                     continue
                 turn.mark("first_token")
@@ -319,6 +403,9 @@ class Orchestrator:
 
         result = await self.speaker.speak(sentences(), turn_id=turn.id, on_first_audio=first_audio)
         turn.reply = "".join(parts).strip()
+        if turn.ignored:
+            log.info("not addressed to Jarvis after all; staying quiet")
+            return
         self.status.voice_used(tts_fallback=result.fallback)
         self._finish(turn)
         if result.stream_id is not None:
@@ -330,8 +417,31 @@ class Orchestrator:
                 await asyncio.wait_for(self._playback_done.wait(), timeout=max(0, remaining) + 5)
             self._awaiting_stream = None
 
+    def _cancel_engage_timer(self) -> None:
+        if self._engage_timer:
+            self._engage_timer.cancel()
+            self._engage_timer = None
+
+    def _end_conversation(self) -> None:
+        self._engage_timer = None
+        if self.sm.state is S.FOLLOW_UP:
+            self.go(S.IDLE, "conversation over")
+
     async def _follow_up(self, turn: Turn) -> None:
-        window = self.config.voice.follow_up_s
+        v = self.config.voice
+        if v.listen_mode == "conversation":
+            if turn.ignored:
+                self.go(S.FOLLOW_UP if self.engaged else S.IDLE, "not addressed")
+                return
+            # The node is always listening; just keep un-named replies welcome for a while.
+            self.engaged_until = time.time() + v.conversation_window_s
+            self.go(S.FOLLOW_UP, "conversation")
+            self._cancel_engage_timer()
+            self._engage_timer = asyncio.get_running_loop().call_later(
+                v.conversation_window_s, self._end_conversation
+            )
+            return
+        window = v.follow_up_s
         if window <= 0 or not self.hub.node_connected:
             self.go(S.IDLE, "done")
             return

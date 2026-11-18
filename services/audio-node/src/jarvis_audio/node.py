@@ -47,6 +47,7 @@ from .audio_io import (
     Mic,
     NoMicrophone,
     Player,
+    ensure_audible,
     make_chime,
     mic_name,
     rms_level,
@@ -56,6 +57,9 @@ from .settings import NodeSettings
 
 log = logging.getLogger(__name__)
 
+# Conversation mode: don't start capturing again until the room has had a moment after Jarvis
+# stops talking (the tail of its own voice / room echo is not a new utterance).
+AMBIENT_AFTER_PLAYBACK_S = 0.6
 PREROLL_CHUNKS = 4  # 320 ms of audio before speech start / wake, so first syllables aren't lost
 LEVEL_EVERY = 1  # send mic level every chunk (80 ms) — the UI smooths it
 MIC_TEST_CHUNKS = round(3.0 * SAMPLE_RATE / CHUNK_SAMPLES)  # 3 s record-and-play-back test
@@ -75,10 +79,14 @@ class SpeechProb(Protocol):
 
 
 class Capture:
-    def __init__(self, stream_id: int, endpointer: Endpointer, follow_up: bool) -> None:
+    def __init__(
+        self, stream_id: int, endpointer: Endpointer, follow_up: bool, ambient: bool = False
+    ) -> None:
         self.stream_id = stream_id
         self.ep = endpointer
         self.follow_up = follow_up
+        # Opened by the node itself (conversation mode): waits for speech like a follow-up.
+        self.ambient = ambient
         self.started_at = time.monotonic()
         self.announced = False  # listen.start sent (follow-up waits for actual speech)
 
@@ -120,6 +128,8 @@ class AudioNode:
         self._playing_stream: int | None = None
         self.connected = asyncio.Event()
         self.monitor = False
+        self.mode = "conversation"
+        self._played_at = 0.0  # monotonic time playback last finished
         self._monitor_best = 0.0
         self._monitor_n = 0
         self._stopping = False
@@ -145,7 +155,9 @@ class AudioNode:
 
     # ------------------------------------------------------------------ capture
 
-    def _begin_capture(self, *, follow_up: bool, timeout_s: float | None = None) -> Capture:
+    def _begin_capture(
+        self, *, follow_up: bool, timeout_s: float | None = None, ambient: bool = False
+    ) -> Capture:
         self.vad.reset()
         sid = self._next_stream
         self._next_stream += 1
@@ -153,16 +165,25 @@ class AudioNode:
             threshold=self.s.vad_threshold,
             end_silence_ms=self.s.end_silence_ms,
             max_utterance_s=self.s.max_utterance_s,
-            no_speech_timeout_s=timeout_s or self.s.no_speech_timeout_s,
+            # An ambient capture waits for speech indefinitely; it is simply the idle state.
+            no_speech_timeout_s=float("inf")
+            if ambient
+            else timeout_s or self.s.no_speech_timeout_s,
         )
-        self.capture = Capture(sid, ep, follow_up)
-        if not follow_up:
+        self.capture = Capture(sid, ep, follow_up or ambient, ambient)
+        if not (follow_up or ambient):  # the others wait for speech to start
             self._announce(self.capture)
         return self.capture
 
     def _announce(self, cap: Capture) -> None:
         cap.announced = True
-        self.send(ListenStart(follow_up=cap.follow_up, turn_id=str(cap.stream_id)))
+        self.send(
+            ListenStart(
+                follow_up=cap.follow_up and not cap.ambient,
+                ambient=cap.ambient,
+                turn_id=str(cap.stream_id),
+            )
+        )
         # Follow-up speech is detected a few chunks late: send the pre-roll so the STT hears the
         # first syllable. (After a wake word the pre-roll *is* the wake word — skip it.)
         if cap.follow_up:
@@ -170,11 +191,18 @@ class AudioNode:
                 self.send(pack_audio(cap.stream_id, chunk))
         self._preroll.clear()
 
+    def _idle_capture(self) -> bool:
+        """The current capture is just conversation mode waiting for speech (nobody announced)."""
+        cap = self.capture
+        return cap is not None and cap.ambient and not cap.announced
+
     def _end_capture(self, reason: str) -> None:
         cap = self.capture
         if cap is None:
             return
         self.capture = None
+        if cap.ambient and not cap.announced:
+            return  # the brain never heard of it
         self.wake.reset()
         self.send(
             ListenEnd(
@@ -199,8 +227,34 @@ class AudioNode:
         self.chime_player.feed(0, self.chime_pcm)
         self.chime_player.end(0)
 
+    def _ambient_ready(self) -> bool:
+        """Conversation mode: open a silent capture whenever nothing else is going on."""
+        return (
+            self.mode == "conversation"
+            and not self.muted
+            and not self.player.active
+            and not self.testing
+            and time.monotonic() - self._played_at > AMBIENT_AFTER_PLAYBACK_S
+        )
+
     async def process_chunk(self, pcm: bytes) -> None:
         cap = self.capture
+        if cap is None and self._ambient_ready():
+            cap = self._begin_capture(follow_up=False, ambient=True)
+        if cap is not None and cap.ambient and not cap.announced:
+            # Waiting for speech: the wake word still works (strong "this is for me" signal) and
+            # takes over from the silent capture.
+            if self.muted or self.player.active:
+                self.capture = None
+                return
+            score = self.wake.process(pcm)
+            if self.monitor:
+                self._monitor_tick(pcm)
+            if score is not None:
+                log.info("wake word (%.2f)", score)
+                self.capture = None
+                self.on_wake(score)
+                return
         if cap is None:
             self._preroll.append(pcm)
             if not self.muted:
@@ -242,8 +296,14 @@ class AudioNode:
         self.s.end_silence_ms = cfg.vad_end_silence_ms
         self.s.max_utterance_s = cfg.max_utterance_s
         self.monitor = cfg.monitor
+        if cfg.mode != self.mode:
+            self.mode = cfg.mode
+            cap = self.capture
+            if cap is not None and cap.ambient and not cap.announced:
+                self.capture = None  # leaving conversation mode: drop the idle capture
         log.info(
-            "config: wake≥%.2f chime=%s end_silence=%dms monitor=%s",
+            "config: mode=%s wake≥%.2f chime=%s end_silence=%dms monitor=%s",
+            cfg.mode,
             cfg.wake_threshold,
             cfg.chime,
             cfg.vad_end_silence_ms,
@@ -258,6 +318,9 @@ class AudioNode:
         elif isinstance(ev, NodeConfig):
             self.apply_config(ev)
         elif isinstance(ev, TtsStart):
+            cap = self.capture
+            if cap is not None and cap.ambient and not cap.announced:
+                self.capture = None  # don't record Jarvis's own voice
             self._playing_stream = ev.stream_id
             self.player.start(ev.stream_id, ev.sample_rate)
             self._report_task = asyncio.create_task(self._report_playback(ev.stream_id))
@@ -270,6 +333,7 @@ class AudioNode:
 
     async def _report_playback(self, stream_id: int) -> None:
         finished = await self.player.wait()
+        self._played_at = time.monotonic()
         if self._playing_stream == stream_id:
             self._playing_stream = None
             self.send(PlaybackDone(stream_id=stream_id, interrupted=not finished))
@@ -277,7 +341,7 @@ class AudioNode:
     async def _command(self, cmd: NodeCommand) -> None:
         match cmd.command:
             case "listen.open":
-                if self.capture is None:
+                if self.capture is None or self._idle_capture():
                     self._begin_capture(follow_up=cmd.follow_up, timeout_s=cmd.timeout_s)
             case "listen.cancel":
                 if self.capture is not None:
@@ -345,10 +409,19 @@ class AudioNode:
         if ok != self.mic_ok:
             self.mic_ok = ok
             self.mic_device = (mic_name() or self.s.input_device) if ok else ""
+            if ok:
+                self._check_speaker()
             if not ok and self._test_rec is not None:
                 self._test_rec = None
                 self.send(MicTest(phase="failed", detail="the microphone was disconnected"))
             self.send(self._status())
+
+    def _check_speaker(self) -> None:
+        try:
+            for change in ensure_audible():
+                log.warning("speaker was silent (0 %% / off): raised %s", change)
+        except Exception:
+            log.debug("speaker volume check failed", exc_info=True)
 
     def _status(self) -> StatusUpdate:
         return StatusUpdate(mic=self.mic_ok, mic_device=self.mic_device, muted=self.muted)

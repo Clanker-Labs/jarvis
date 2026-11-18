@@ -231,6 +231,7 @@ class Runtime:
             vad_end_silence_ms=v.vad_end_silence_ms,
             max_utterance_s=v.max_utterance_s,
             monitor=self.monitor,
+            mode=v.listen_mode,
         )
 
     async def set_monitor(self, on: bool) -> None:

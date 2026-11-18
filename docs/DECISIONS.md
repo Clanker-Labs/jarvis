@@ -480,3 +480,30 @@ saving a masked value keeps the stored one); tool overrides can be removed
   word, so saying "hey Jarvis" during the test doesn't start a turn.
 - `wake.score` and the new `mic.test` events are now forwarded to the UI bus. Before this, the
   orchestrator dropped `wake.score`, so the admin wake meter never moved.
+
+## Conversation mode (no wake word)
+
+- **Default.** `voice.listen_mode = "conversation"`. The node keeps a silent capture open whenever
+  it is idle, not muted and not speaking, so every utterance is captured (VAD start/end, same
+  endpointer and pre-roll as follow-ups). `wake_word` mode keeps the original behaviour.
+- **When Jarvis answers:**
+  - **Named:** "Jarvis" (or a configured mishearing) appears as a whole word → answered.
+  - **Engaged:** within `conversation_window_s` (40 s) after Jarvis spoke, un-named speech is passed
+    to the model with a note. The model may reply exactly `<ignore>`, and the orchestrator then drops
+    the turn before any audio. That's cheaper and more natural than a separate classifier call, and
+    the decision happens where the context is.
+  - **Otherwise** it's someone else's conversation: dropped. It is not shown on the kiosk, not put in
+    a trace, not added to memory, and the state never leaves IDLE.
+- **Privacy.** Un-addressed speech is only ever transcribed by self-hosted engines (`whisper_local`
+  on the Pi, `whisper_remote` on the tailnet), never Deepgram or OpenAI, even when they are first in
+  the chain. Addressed and wake-word turns use the normal chain.
+- **Interruptions.** Overheard speech never interrupts Jarvis while it is thinking or speaking, and
+  the node doesn't capture while it plays (own voice). The wake word still works in this mode: it is
+  how you barge in, and it counts as addressing Jarvis.
+- **Cost.** Every utterance in the room is transcribed. On the Pi (whisper tiny.en) that is about 1×
+  real time on one core. A Whisper server on the GPU box (`whisper_remote_url`) is the fix if the
+  room is talkative.
+- **Speaker volume guard.** A USB speakerphone keeps its own hardware volume, which PipeWire doesn't
+  always follow. The EMEET was at 0 %, so every reply was played into silence. When a mic appears,
+  the node raises any USB speaker control at exactly 0 % or off to 60 %. Low-but-deliberate levels
+  are left alone.

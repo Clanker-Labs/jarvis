@@ -752,6 +752,10 @@
     "ListenStart": {
       "additionalProperties": false,
       "properties": {
+        "ambient": {
+          "default": false,
+          "type": "boolean"
+        },
         "follow_up": {
           "default": false,
           "type": "boolean"
@@ -787,7 +791,8 @@
         "ts",
         "turn_id",
         "type",
-        "follow_up"
+        "follow_up",
+        "ambient"
       ],
       "title": "ListenStart",
       "type": "object"
@@ -942,6 +947,14 @@
           "minimum": 3,
           "type": "number"
         },
+        "mode": {
+          "default": "conversation",
+          "enum": [
+            "conversation",
+            "wake_word"
+          ],
+          "type": "string"
+        },
         "monitor": {
           "default": false,
           "type": "boolean"
@@ -989,7 +1002,8 @@
         "chime",
         "vad_end_silence_ms",
         "max_utterance_s",
-        "monitor"
+        "monitor",
+        "mode"
       ],
       "title": "NodeConfig",
       "type": "object"

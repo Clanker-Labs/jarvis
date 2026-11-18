@@ -17,13 +17,14 @@ from .events import State
 S = State
 
 TRANSITIONS: dict[State, frozenset[State]] = {
-    S.IDLE: frozenset({S.WAKE, S.LISTENING}),
+    # IDLE → THINKING: conversation mode transcribes overheard speech silently, then answers.
+    S.IDLE: frozenset({S.WAKE, S.LISTENING, S.THINKING}),
     S.WAKE: frozenset({S.LISTENING, S.IDLE}),
     S.LISTENING: frozenset({S.THINKING, S.IDLE}),
     S.THINKING: frozenset({S.TOOL, S.SPEAKING, S.LISTENING, S.FOLLOW_UP, S.IDLE}),
     S.TOOL: frozenset({S.THINKING, S.SPEAKING, S.LISTENING, S.IDLE}),
     S.SPEAKING: frozenset({S.THINKING, S.TOOL, S.FOLLOW_UP, S.LISTENING, S.IDLE}),
-    S.FOLLOW_UP: frozenset({S.LISTENING, S.WAKE, S.IDLE}),
+    S.FOLLOW_UP: frozenset({S.LISTENING, S.WAKE, S.THINKING, S.IDLE}),
     S.ERROR: frozenset({S.IDLE}),
 }
 # Every state may fail.

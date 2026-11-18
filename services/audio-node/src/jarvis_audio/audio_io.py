@@ -94,6 +94,54 @@ def mic_name(pcm_table: Path | None = None, cards: Path | None = None) -> str:
     return parts[1] if len(parts) > 1 else devs[0]
 
 
+# Playback controls a USB speakerphone exposes; a 0 % or switched-off one means total silence.
+SPEAKER_CONTROLS = ("PCM", "Speaker", "Master", "Headphone")
+SPEAKER_FLOOR = 60  # percent to restore when we find a speaker at 0 % / off
+
+
+def _usb_playback_cards(pcm_table: Path | None = None) -> list[str]:
+    pcm_table = pcm_table or asound_dir() / "pcm"
+    try:
+        lines = pcm_table.read_text().splitlines()
+    except OSError:
+        return []
+    return sorted(
+        {ln.split("-", 1)[0].lstrip("0") or "0" for ln in lines if "USB" in ln and "playback" in ln}
+    )
+
+
+def ensure_audible(run: Callable[[list[str]], str] | None = None) -> list[str]:
+    """Raise any USB speaker whose hardware volume is 0 % or switched off.
+
+    A speakerphone keeps its own volume in hardware (its +/- buttons set it), and PipeWire does
+    not always sync to it, so Jarvis can "speak" perfectly into a speaker set to zero. Volume that
+    is merely low is respected; only 0 % / off (certainly not intended) is fixed. Returns what was
+    changed, for the log."""
+    import subprocess
+
+    def default_run(cmd: list[str]) -> str:
+        # Fixed argv (amixer + card digits + a known control name), no shell.
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout  # noqa: S603
+
+    run = run or default_run
+    exe = shutil.which("amixer") or "amixer"
+    fixed: list[str] = []
+    for card in _usb_playback_cards():
+        for ctl in SPEAKER_CONTROLS:
+            try:
+                out = run([exe, "-c", card, "sget", ctl])
+            except Exception as e:
+                log.debug("amixer sget %s on card %s failed: %s", ctl, card, e)
+                continue
+            if "Playback" not in out:
+                continue
+            silent = "[0%]" in out or "[off]" in out
+            if silent:
+                run([exe, "-q", "-c", card, "sset", ctl, f"{SPEAKER_FLOOR}%", "unmute"])
+                fixed.append(f"card {card} {ctl} → {SPEAKER_FLOOR}%")
+    return fixed
+
+
 class Mic(Protocol):
     def chunks(self) -> AsyncIterator[bytes]: ...
     async def close(self) -> None: ...

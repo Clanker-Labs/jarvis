@@ -25,6 +25,7 @@ from jarvis_protocol import (
     State,
 )
 
+from ..orchestrator import IGNORE_MARKER
 from ..providers.base import (
     Completed,
     Message,
@@ -61,6 +62,13 @@ SUMMARY_PROMPT = (
     "anything the user asked to remember. Plain text only."
 )
 
+# Conversation mode: said within the conversation window, but without "Jarvis".
+OVERHEARD_NOTE = (
+    "The last message was overheard in the room during your conversation; it did not use your "
+    "name. If it is clearly a reply or request to you, answer normally. If it is people talking "
+    "to each other, the TV, or a phone call, reply with exactly "
+    f"{IGNORE_MARKER} and nothing else."
+)
 _PAUSED = "\x00paused"  # sentinel yielded internally when a confirmation is pending
 
 
@@ -182,12 +190,16 @@ class Agent:
             Message("user", turn.user_text),
             Message("system", self.context_note()),
         ]
+        if getattr(turn, "may_ignore", False):
+            run.msgs.append(Message("system", OVERHEARD_NOTE))
         async for d in self._loop(run):
             yield d
         self._remember(run)
 
     def _remember(self, run: _Run) -> None:
         text = "".join(run.reply).strip()
+        if text.startswith(IGNORE_MARKER):
+            return  # someone else's conversation: not part of ours
         if text:
             self.memory.add(run.turn.user_text, text, summarizer=self._summarize)
 
